@@ -1,0 +1,302 @@
+// PropFlow Zimbabwe — Phase 1 schema
+// Lean by design. Do not add Phase 2 models (Announcement, Document, PropertyHealthScore).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  LANDLORD
+  TENANT
+  ADMIN
+}
+
+enum PropertyType {
+  FLAT
+  HOUSE
+  ROOM
+  COTTAGE
+  COMMERCIAL
+  STAND
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_PARTS
+  RESOLVED
+  CLOSED
+}
+
+enum ComplaintPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum PaymentMethod {
+  ECOCASH
+  ONEMONEY
+  INNBUCKS
+  BANK_TRANSFER
+  CASH_USD
+  CASH_ZIG
+}
+
+enum Currency {
+  USD
+  ZIG
+}
+
+enum SubscriptionTier {
+  TRIAL
+  STARTER
+  PRO
+  AGENCY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum PaymentEventSource {
+  MANUAL
+  WEBHOOK
+  SYSTEM
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  phone     String?
+  role      UserRole
+  avatarUrl String?
+  smsOptIn  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownedProperties Property[]
+  organization    Organization? @relation(fields: [orgId], references: [id])
+  orgId           String?
+  tenancy         Tenancy?
+
+  @@index([clerkId])
+}
+
+model Organization {
+  id                 String             @id @default(cuid())
+  clerkOrgId         String             @unique
+  name               String
+  tier               SubscriptionTier   @default(TRIAL)
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  trialEndsAt        DateTime
+  currentPeriodEnd   DateTime?
+  isAnnual           Boolean            @default(false)
+  smsCredits         Int                @default(20) // trial gift
+  atSenderId         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  members       User[]
+  properties    Property[]
+  billingEvents BillingEvent[]
+  smsLogs       SmsLog[]
+}
+
+model Property {
+  id              String       @id @default(cuid())
+  orgId           String
+  name            String
+  address         String
+  suburb          String
+  city            String
+  province        String
+  type            PropertyType
+  totalUnits      Int
+  ownerId         String
+  primaryCurrency Currency     @default(USD)
+  description     String?
+  imageUrl        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  owner User         @relation(fields: [ownerId], references: [id])
+  org   Organization @relation(fields: [orgId], references: [id])
+  units Unit[]
+
+  @@index([orgId])
+  @@index([ownerId])
+}
+
+model Unit {
+  id            String   @id @default(cuid())
+  propertyId    String
+  unitNumber    String
+  bedrooms      Int      @default(1)
+  bathrooms     Int      @default(1)
+  rentAmountUsd Float?
+  rentAmountZig Float?
+  depositAmount Float?
+  isVacant      Boolean  @default(true)
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenancy     Tenancy?
+  complaints  Complaint[]
+  rentRecords RentRecord[]
+
+  @@unique([propertyId, unitNumber])
+  @@index([propertyId])
+}
+
+model Tenancy {
+  id         String    @id @default(cuid())
+  unitId     String    @unique
+  tenantId   String    @unique
+  startDate  DateTime
+  endDate    DateTime?
+  rentDueDay Int       @default(1)
+  currency   Currency  @default(USD)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  unit   Unit @relation(fields: [unitId], references: [id])
+  tenant User @relation(fields: [tenantId], references: [id])
+}
+
+model Complaint {
+  id          String            @id @default(cuid())
+  unitId      String
+  tenantId    String
+  title       String
+  description String
+  category    String
+  status      ComplaintStatus   @default(OPEN)
+  priority    ComplaintPriority @default(MEDIUM)
+  resolvedAt  DateTime?
+  imageUrls   String[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  unit     Unit               @relation(fields: [unitId], references: [id])
+  messages ComplaintMessage[]
+
+  @@index([unitId])
+  @@index([tenantId])
+}
+
+model ComplaintMessage {
+  id          String   @id @default(cuid())
+  complaintId String
+  senderId    String
+  senderRole  UserRole
+  body        String
+  imageUrls   String[]
+  createdAt   DateTime @default(now())
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+}
+
+model RentRecord {
+  id            String         @id @default(cuid())
+  unitId        String
+  tenantId      String
+  periodMonth   Int
+  periodYear    Int
+  amountDueUsd  Float
+  amountDueZig  Float?
+  amountPaidUsd Float          @default(0)
+  currency      Currency
+  status        RentStatus     @default(PENDING)
+  paymentMethod PaymentMethod?
+  referenceNo   String? // EcoCash ref: EC + 10 digits — validate format
+  proofImageUrl String? // tenant-uploaded screenshot (R2)
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  unit   Unit           @relation(fields: [unitId], references: [id])
+  events PaymentEvent[]
+
+  @@unique([unitId, periodMonth, periodYear])
+  @@index([unitId])
+}
+
+model PaymentEvent {
+  id           String             @id @default(cuid())
+  rentRecordId String
+  actorId      String // user id or "system"
+  source       PaymentEventSource
+  fromStatus   RentStatus
+  toStatus     RentStatus
+  amountUsd    Float?
+  method       PaymentMethod?
+  referenceNo  String?
+  createdAt    DateTime           @default(now())
+
+  rentRecord RentRecord @relation(fields: [rentRecordId], references: [id], onDelete: Cascade)
+
+  @@index([rentRecordId])
+}
+
+model BillingEvent {
+  id          String   @id @default(cuid())
+  orgId       String
+  type        String // SUBSCRIPTION_PAYMENT | SMS_BUNDLE | TIER_CHANGE | TRIAL_START
+  amountUsd   Float
+  paynowRef   String?  @unique // idempotency anchor
+  description String
+  createdAt   DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+}
+
+model SmsLog {
+  id        String   @id @default(cuid())
+  orgId     String
+  recipient String
+  template  String // RENT_REMINDER | COMPLAINT_UPDATE | PAYMENT_PROOF_ALERT
+  body      String
+  status    String // SENT | FAILED | OPTED_OUT
+  costUsd   Float?
+  sentAt    DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+}
+
+model ExchangeRate {
+  id       String   @id @default(cuid())
+  usdToZig Float
+  source   String // "scraped" | "manual"
+  setByOrg String? // null = global scraped rate; orgId = manual override
+  date     DateTime @default(now())
+}

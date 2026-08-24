@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  /* Primary — Msasa terracotta */
+  --brand-primary: #c8522a;
+  --brand-primary-light: #e8835c;
+  --brand-primary-dark: #9a3a1a; /* landlord sidebar */
+
+  /* Secondary — Victoria Falls teal */
+  --brand-secondary: #0e7c6b;
+  --brand-secondary-light: #1aaf97;
+  --brand-secondary-dark: #085548; /* tenant sidebar */
+
+  /* Accent — Savanna gold */
+  --brand-accent: #d4a017;
+  --brand-accent-light: #ecc94b;
+
+  /* Warm stone neutrals — never cold grey */
+  --stone-50: #faf8f5;
+  --stone-100: #f2ede6;
+  --stone-200: #e4d9cc;
+  --stone-400: #9e8e7e;
+  --stone-600: #5c4a38;
+  --stone-800: #2e2218;
+  --stone-900: #1a1208;
+
+  /* Semantic */
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0369a1;
+
+  /* Payment brands (accurate) */
+  --ecocash: #00a850;
+  --onemoney: #e30613;
+  --innbucks: #f7a800;
+
+  /* shadcn/ui structural tokens — mapped onto the PropFlow palette, not the grey defaults */
+  --background: var(--stone-50);
+  --foreground: var(--stone-900);
+  --card: #ffffff;
+  --card-foreground: var(--stone-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--stone-900);
+  --primary: var(--brand-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-secondary);
+  --secondary-foreground: #ffffff;
+  --muted: var(--stone-100);
+  --muted-foreground: var(--stone-600);
+  --accent: var(--brand-accent-light);
+  --accent-foreground: var(--stone-900);
+  --destructive: var(--danger);
+  --border: var(--stone-200);
+  --input: var(--stone-200);
+  --ring: var(--brand-primary);
+  --radius: 1rem; /* base for rounded-2xl cards */
+
+  /* Landlord sidebar */
+  --sidebar: var(--brand-primary-dark);
+  --sidebar-foreground: #faf3ee;
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--brand-primary);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: var(--brand-primary-dark);
+  --sidebar-ring: var(--brand-accent);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-light: var(--brand-primary-light);
+  --color-brand-primary-dark: var(--brand-primary-dark);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-secondary-light: var(--brand-secondary-light);
+  --color-brand-secondary-dark: var(--brand-secondary-dark);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-light: var(--brand-accent-light);
+
+  --color-stone-50: var(--stone-50);
+  --color-stone-100: var(--stone-100);
+  --color-stone-200: var(--stone-200);
+  --color-stone-400: var(--stone-400);
+  --color-stone-600: var(--stone-600);
+  --color-stone-800: var(--stone-800);
+  --color-stone-900: var(--stone-900);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-ecocash: var(--ecocash);
+  --color-onemoney: var(--onemoney);
+  --color-innbucks: var(--innbucks);
+
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-plus-jakarta-sans);
+  --font-mono: var(--font-jetbrains-mono);
+
+  --text-xs: 0.6875rem; /* 11px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading), var(--font-sans), sans-serif;
+    font-weight: 800;
+  }
+}
