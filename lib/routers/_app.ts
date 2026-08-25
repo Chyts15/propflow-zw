@@ -5,6 +5,7 @@ import { tenantsRouter } from "@/lib/routers/tenants";
 import { complaintsRouter } from "@/lib/routers/complaints";
 import { rentRouter } from "@/lib/routers/rent";
 import { billingRouter } from "@/lib/routers/billing";
+import { dashboardRouter } from "@/lib/routers/dashboard";
 
 export const appRouter = router({
   properties: propertiesRouter,
@@ -13,6 +14,7 @@ export const appRouter = router({
   complaints: complaintsRouter,
   rent: rentRouter,
   billing: billingRouter,
+  dashboard: dashboardRouter,
 });
 
 export type AppRouter = typeof appRouter;

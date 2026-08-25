@@ -3,9 +3,8 @@ import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 
-// Syncs Clerk -> Postgres. Only user.created is handled for Step 3 (self-serve
-// landlord signup); tenant invitations (Step 4) and user.updated/deleted are
-// TODO for later steps.
+// Syncs Clerk -> Postgres. Only user.created is handled; user.updated/deleted
+// are TODO for later steps.
 export async function POST(req: NextRequest) {
   let evt;
   try {
@@ -33,13 +32,50 @@ export async function POST(req: NextRequest) {
     return new Response("user has no email address", { status: 400 });
   }
 
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || primaryEmail;
   const phone = user.phone_numbers[0]?.phone_number;
+  const metadata = user.public_metadata as {
+    role?: string;
+    unitId?: string;
+    name?: string;
+    rentDueDay?: number;
+  };
 
-  // Only landlords self-register (spec: tenants exist only via landlord
-  // invitation). Every new sign-up gets its own Clerk Organization + a
-  // TRIALING PropFlow org. The org name is a placeholder — Step 4/later adds
-  // a real onboarding step for landlords to name their business.
+  // Invited tenant (lib/routers/tenants.ts's `invite` sets this metadata on
+  // the Clerk invitation; Clerk copies it onto the resulting User).
+  if (metadata.role === "TENANT" && metadata.unitId) {
+    const name = metadata.name || [user.first_name, user.last_name].filter(Boolean).join(" ") || primaryEmail;
+
+    await prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.findUniqueOrThrow({ where: { id: metadata.unitId } });
+      if (!unit.isVacant) {
+        // Race: unit got filled between invite and acceptance. Leave the
+        // tenant User unlinked rather than corrupting the existing tenancy.
+        await tx.user.create({ data: { clerkId, email: primaryEmail, name, phone, role: "TENANT" } });
+        return;
+      }
+
+      const tenantUser = await tx.user.create({
+        data: { clerkId, email: primaryEmail, name, phone, role: "TENANT" },
+      });
+      await tx.tenancy.create({
+        data: {
+          unitId: unit.id,
+          tenantId: tenantUser.id,
+          startDate: new Date(),
+          rentDueDay: metadata.rentDueDay ?? 1,
+          currency: unit.rentAmountUsd != null ? "USD" : "ZIG",
+        },
+      });
+      await tx.unit.update({ where: { id: unit.id }, data: { isVacant: false } });
+    });
+
+    return new Response("synced (tenant)", { status: 200 });
+  }
+
+  // Self-serve landlord signup. Every new sign-up gets its own Clerk
+  // Organization + a TRIALING PropFlow org. The org name is a placeholder —
+  // a later step adds a real onboarding step for landlords to name it.
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || primaryEmail;
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + 30);
 
@@ -51,21 +87,10 @@ export async function POST(req: NextRequest) {
 
   await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
-      data: {
-        clerkOrgId: clerkOrg.id,
-        name: clerkOrg.name,
-        trialEndsAt,
-      },
+      data: { clerkOrgId: clerkOrg.id, name: clerkOrg.name, trialEndsAt },
     });
     await tx.user.create({
-      data: {
-        clerkId,
-        email: primaryEmail,
-        name,
-        phone,
-        role: "LANDLORD",
-        orgId: org.id,
-      },
+      data: { clerkId, email: primaryEmail, name, phone, role: "LANDLORD", orgId: org.id },
     });
   });
 
@@ -73,5 +98,5 @@ export async function POST(req: NextRequest) {
     publicMetadata: { role: "LANDLORD" },
   });
 
-  return new Response("synced", { status: 200 });
+  return new Response("synced (landlord)", { status: 200 });
 }
