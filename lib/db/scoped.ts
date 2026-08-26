@@ -79,6 +79,10 @@ export async function deletePropertyForOrg(orgId: string, propertyId: string) {
   if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
 }
 
+export async function getUnitCountForOrg(orgId: string) {
+  return prisma.unit.count({ where: { property: { orgId } } });
+}
+
 export async function getUnitsForOrg(orgId: string, { cursor }: Cursor = {}) {
   const items = await prisma.unit.findMany({
     where: { property: { orgId } },
@@ -209,18 +213,35 @@ export async function getVacantUnitForOrg(orgId: string, unitId: string) {
   return unit;
 }
 
+// ---- Exchange rate (read-only display for Step 4 — override/cron is Step 5) --
+
+export async function getLatestExchangeRate() {
+  return prisma.exchangeRate.findFirst({ orderBy: { date: "desc" } });
+}
+
 // ---- Dashboard ------------------------------------------------------------
+
+function pctPaid(records: { status: string }[]) {
+  return records.length === 0 ? 0 : Math.round((records.filter((r) => r.status === "PAID").length / records.length) * 100);
+}
 
 export async function getDashboardStats(orgId: string) {
   const now = new Date();
   const periodMonth = now.getMonth() + 1;
   const periodYear = now.getFullYear();
+  const lastMonthDate = new Date(periodYear, periodMonth - 2, 1);
+  const lastPeriodMonth = lastMonthDate.getMonth() + 1;
+  const lastPeriodYear = lastMonthDate.getFullYear();
 
-  const [units, rentRecords, openComplaints, criticalComplaints, org] = await Promise.all([
+  const [units, rentRecords, lastMonthRentRecords, openComplaints, criticalComplaints, org] = await Promise.all([
     prisma.unit.findMany({ where: { property: { orgId } }, select: { isVacant: true } }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth, periodYear },
       select: { status: true, amountDueUsd: true, amountPaidUsd: true },
+    }),
+    prisma.rentRecord.findMany({
+      where: { unit: { property: { orgId } }, periodMonth: lastPeriodMonth, periodYear: lastPeriodYear },
+      select: { status: true },
     }),
     prisma.complaint.count({
       where: { unit: { property: { orgId } }, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_PARTS"] } },
@@ -235,10 +256,9 @@ export async function getDashboardStats(orgId: string) {
   const totalUnits = units.length;
   const dueUsd = rentRecords.reduce((sum, r) => sum + r.amountDueUsd, 0);
   const collectedUsd = rentRecords.reduce((sum, r) => sum + r.amountPaidUsd, 0);
-  const onTimeCollectionsPct =
-    rentRecords.length === 0
-      ? 0
-      : Math.round((rentRecords.filter((r) => r.status === "PAID").length / rentRecords.length) * 100);
+  const onTimeCollectionsPct = pctPaid(rentRecords);
+  const onTimeCollectionsTrend =
+    lastMonthRentRecords.length === 0 ? null : onTimeCollectionsPct - pctPaid(lastMonthRentRecords);
 
   return {
     orgName: org.name,
@@ -248,6 +268,7 @@ export async function getDashboardStats(orgId: string) {
     dueUsd,
     collectedUsd,
     onTimeCollectionsPct,
+    onTimeCollectionsTrend,
     openComplaints,
     criticalComplaints,
   };

@@ -55,8 +55,15 @@ export function AddPropertyDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="bg-brand-primary hover:bg-brand-primary-dark" />}>
-        <Plus className="h-4 w-4" /> Add Property
+      <DialogTrigger
+        render={
+          <Button
+            variant="outline"
+            className="border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light hover:bg-brand-primary/10"
+          />
+        }
+      >
+        <Plus className="h-4 w-4" /> ADD PROPERTY
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

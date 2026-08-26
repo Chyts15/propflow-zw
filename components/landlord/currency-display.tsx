@@ -13,7 +13,7 @@ export function CurrencyDisplay({ usd, zig }: { usd: number; zig?: number | null
   return (
     <span className="font-mono">
       {formatUsd(usd)}
-      {zig != null && <span className="text-stone-400"> · {formatZig(zig)}</span>}
+      {zig != null && <span style={{ color: "rgba(255,255,255,0.4)" }}> · {formatZig(zig)}</span>}
     </span>
   );
 }

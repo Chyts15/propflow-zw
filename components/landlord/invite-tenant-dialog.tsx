@@ -52,9 +52,15 @@ export function InviteTenantDialog({ vacantUnits }: { vacantUnits: VacantUnit[] 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button className="bg-brand-primary hover:bg-brand-primary-dark" disabled={vacantUnits.length === 0} />}
+        render={
+          <Button
+            variant="outline"
+            className="border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light hover:bg-brand-primary/10"
+            disabled={vacantUnits.length === 0}
+          />
+        }
       >
-        <UserPlus className="h-4 w-4" /> Invite Tenant
+        <UserPlus className="h-4 w-4" /> INVITE TENANT
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

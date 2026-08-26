@@ -44,8 +44,15 @@ export function AddUnitDialog({ propertyId }: { propertyId: string }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" />}>
-        <Plus className="h-4 w-4" /> Add Unit
+      <DialogTrigger
+        render={
+          <Button
+            variant="outline"
+            className="border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light hover:bg-brand-primary/10"
+          />
+        }
+      >
+        <Plus className="h-4 w-4" /> ADD UNIT
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
