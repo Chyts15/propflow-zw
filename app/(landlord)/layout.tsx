@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getUnitCountForOrg } from "@/lib/db/scoped";
+import { getUnitCountForOrg, getOpenComplaintsCountForOrg } from "@/lib/db/scoped";
 import { LandlordSidebar } from "@/components/landlord/sidebar";
 import { MobileTopBar, MobileTabBar } from "@/components/landlord/mobile-nav";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
@@ -23,7 +23,10 @@ export default async function LandlordLayout({ children }: { children: React.Rea
   // First) — this DB check is what actually enforces the role, every time.
   if (!user || user.role !== "LANDLORD" || !user.orgId) redirect("/home");
 
-  const unitCount = await getUnitCountForOrg(user.orgId);
+  const [unitCount, openComplaintsCount] = await Promise.all([
+    getUnitCountForOrg(user.orgId),
+    getOpenComplaintsCountForOrg(user.orgId),
+  ]);
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: LANDLORD_DARK.mainBg }}>
@@ -32,10 +35,11 @@ export default async function LandlordLayout({ children }: { children: React.Rea
         userName={user.name}
         tier={user.organization?.tier ?? "TRIAL"}
         unitCount={unitCount}
+        openComplaintsCount={openComplaintsCount}
       />
       <MobileTopBar />
       <main className="flex-1 overflow-y-auto pt-14 pb-16 sm:pt-0 sm:pb-0">{children}</main>
-      <MobileTabBar />
+      <MobileTabBar openComplaintsCount={openComplaintsCount} />
     </div>
   );
 }

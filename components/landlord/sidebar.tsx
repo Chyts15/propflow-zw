@@ -13,27 +13,28 @@ import {
 } from "lucide-react";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, enabled: true },
-  { href: "/properties", label: "Properties", icon: Building2, enabled: true },
-  { href: "/tenants", label: "Tenants", icon: Users, enabled: true },
-  { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
-  { href: "/complaints", label: "Complaints", icon: MessageSquare, enabled: false, badge: 2 },
-  { href: "/settings", label: "Settings", icon: Settings, enabled: false },
-];
-
 export function LandlordSidebar({
   orgName,
   userName,
   tier,
   unitCount,
+  openComplaintsCount = 0,
 }: {
   orgName: string;
   userName: string;
   tier: string;
   unitCount: number;
+  openComplaintsCount?: number;
 }) {
   const pathname = usePathname();
+  const NAV = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, enabled: true },
+    { href: "/properties", label: "Properties", icon: Building2, enabled: true },
+    { href: "/tenants", label: "Tenants", icon: Users, enabled: true },
+    { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
+    { href: "/complaints", label: "Complaints", icon: MessageSquare, enabled: true, badge: openComplaintsCount || undefined },
+    { href: "/settings", label: "Settings", icon: Settings, enabled: false },
+  ];
   const t = LANDLORD_DARK;
   const initials = userName
     .split(" ")

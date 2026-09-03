@@ -1,7 +1,7 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
-import type { Currency, PropertyType } from "@/generated/prisma/client";
+import type { Currency, PropertyType, ComplaintStatus, ComplaintPriority, UserRole } from "@/generated/prisma/client";
 
 /**
  * ALL org-owned data access (Property/Unit/Tenancy/Complaint/RentRecord) goes
@@ -83,6 +83,12 @@ export async function getUnitCountForOrg(orgId: string) {
   return prisma.unit.count({ where: { property: { orgId } } });
 }
 
+export async function getOpenComplaintsCountForOrg(orgId: string) {
+  return prisma.complaint.count({
+    where: { unit: { property: { orgId } }, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_PARTS"] } },
+  });
+}
+
 export async function getUnitsForOrg(orgId: string, { cursor }: Cursor = {}) {
   const items = await prisma.unit.findMany({
     where: { property: { orgId } },
@@ -162,6 +168,80 @@ export async function getComplaintsForOrg(orgId: string, { cursor }: Cursor = {}
   const withTenantName = items.map((c) => ({ ...c, tenantName: nameById.get(c.tenantId) ?? "Unknown tenant" }));
 
   return paginate(withTenantName);
+}
+
+export async function getComplaintForOrg(orgId: string, complaintId: string) {
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: complaintId, unit: { property: { orgId } } },
+    include: {
+      unit: { select: { unitNumber: true, propertyId: true } },
+      messages: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+
+  const [tenant, senders] = await Promise.all([
+    prisma.user.findUnique({ where: { id: complaint.tenantId }, select: { name: true, phone: true } }),
+    prisma.user.findMany({
+      where: { id: { in: [...new Set(complaint.messages.map((m) => m.senderId))] } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const senderNameById = new Map(senders.map((s) => [s.id, s.name]));
+
+  return {
+    ...complaint,
+    tenantName: tenant?.name ?? "Unknown tenant",
+    tenantPhone: tenant?.phone ?? null,
+    messages: complaint.messages.map((m) => ({ ...m, senderName: senderNameById.get(m.senderId) ?? "Unknown" })),
+  };
+}
+
+export async function updateComplaintStatus(orgId: string, complaintId: string, status: ComplaintStatus) {
+  const { count } = await prisma.complaint.updateMany({
+    where: { id: complaintId, unit: { property: { orgId } } },
+    data: { status, resolvedAt: status === "RESOLVED" || status === "CLOSED" ? new Date() : null },
+  });
+  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+}
+
+export async function updateComplaintPriority(orgId: string, complaintId: string, priority: ComplaintPriority) {
+  const { count } = await prisma.complaint.updateMany({
+    where: { id: complaintId, unit: { property: { orgId } } },
+    data: { priority },
+  });
+  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+}
+
+export async function addComplaintMessageForOrg(
+  orgId: string,
+  complaintId: string,
+  senderId: string,
+  senderRole: UserRole,
+  body: string,
+  imageUrls: string[],
+) {
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: complaintId, unit: { property: { orgId } } },
+    select: { id: true },
+  });
+  if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+  return prisma.complaintMessage.create({
+    data: { complaintId, senderId, senderRole, body, imageUrls },
+  });
+}
+
+// Tenant creates a complaint only on their own unit — ctx.tenancy.unitId
+// (injected by tenantProcedure) is the source of truth, never a client-
+// supplied unitId.
+export async function createComplaintForTenant(
+  tenantId: string,
+  unitId: string,
+  data: { title: string; description: string; category: string; imageUrls: string[] },
+) {
+  return prisma.complaint.create({
+    data: { ...data, tenantId, unitId },
+  });
 }
 
 export async function getRentRecordsForOrg(
@@ -381,6 +461,15 @@ export async function getDashboardStats(orgId: string) {
 // Tenant reads are scoped to tenantId, never gated by org billing status —
 // see CLAUDE.md § Tier Gating & Tenant Access. These must keep working even
 // when the parent org is PAST_DUE/CANCELLED.
+
+export async function getTenancyForTenant(tenantId: string) {
+  const tenancy = await prisma.tenancy.findUnique({
+    where: { tenantId },
+    include: { unit: { include: { property: { select: { name: true, suburb: true, city: true } } } } },
+  });
+  if (!tenancy) throw new TRPCError({ code: "NOT_FOUND", message: "No active tenancy" });
+  return tenancy;
+}
 
 export async function getRentHistoryForTenant(tenantId: string, { cursor }: Cursor = {}) {
   const items = await prisma.rentRecord.findMany({

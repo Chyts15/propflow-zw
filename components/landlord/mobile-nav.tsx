@@ -8,13 +8,6 @@ import { LANDLORD_DARK } from "@/components/landlord/theme";
 // Bottom tab bar collapses the sidebar's 6 sections into 5 slots, matching
 // the mockup's Home/Units/Finances/Issues/More pattern — Tenants and
 // Settings fold into "More" (no dedicated mobile mockup shows a 6th tab).
-const TABS = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard, enabled: true },
-  { href: "/properties", label: "Units", icon: Building2, enabled: true },
-  { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
-  { href: "/complaints", label: "Issues", icon: MessageSquare, enabled: false, badge: 2 },
-  { href: "/tenants", label: "More", icon: MoreHorizontal, enabled: true },
-];
 
 export function MobileTopBar() {
   const t = LANDLORD_DARK;
@@ -44,9 +37,16 @@ export function MobileTopBar() {
   );
 }
 
-export function MobileTabBar() {
+export function MobileTabBar({ openComplaintsCount = 0 }: { openComplaintsCount?: number }) {
   const pathname = usePathname();
   const t = LANDLORD_DARK;
+  const TABS = [
+    { href: "/dashboard", label: "Home", icon: LayoutDashboard, enabled: true },
+    { href: "/properties", label: "Units", icon: Building2, enabled: true },
+    { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
+    { href: "/complaints", label: "Issues", icon: MessageSquare, enabled: true, badge: openComplaintsCount || undefined },
+    { href: "/tenants", label: "More", icon: MoreHorizontal, enabled: true },
+  ];
 
   return (
     <nav
