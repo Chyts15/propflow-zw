@@ -2,14 +2,11 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { AlertTriangle, Bell, MessageSquareWarning } from "lucide-react";
 import { prisma } from "@/lib/db";
-import {
-  getDashboardStats,
-  getComplaintsForOrg,
-  getRentRecordsForOrg,
-  getLatestExchangeRate,
-} from "@/lib/db/scoped";
+import { getDashboardStats, getComplaintsForOrg, getRentRecordsForOrg } from "@/lib/db/scoped";
+import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { CollectionsStat } from "@/components/landlord/collections-stat";
 import { CurrencyDisplay } from "@/components/landlord/currency-display";
+import { ExchangeRatePill } from "@/components/shared/exchange-rate-pill";
 import { LANDLORD_DARK, PRIORITY_GLOW, PAYMENT_BADGE, RENT_STATUS_BADGE } from "@/components/landlord/theme";
 import { formatRelativeTime } from "@/lib/utils";
 
@@ -30,7 +27,7 @@ export default async function DashboardPage() {
     getDashboardStats(orgId),
     getComplaintsForOrg(orgId),
     getRentRecordsForOrg(orgId, {}),
-    getLatestExchangeRate(),
+    resolveExchangeRate(orgId),
   ]);
 
   const today = new Date()
@@ -70,14 +67,7 @@ export default async function DashboardPage() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          {exchangeRate && (
-            <span
-              className="rounded-full px-3 py-1.5 font-mono text-xs"
-              style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-            >
-              1 USD ≈ {exchangeRate.usdToZig.toLocaleString()} ZiG
-            </span>
-          )}
+          <ExchangeRatePill rate={exchangeRate} cardBg={t.cardBg} cardBorder={t.cardBorder} fgMuted={t.fgMuted} />
           {/* MobileTopBar already renders a bell on mobile — avoid duplicating it. */}
           <button
             type="button"

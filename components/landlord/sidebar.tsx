@@ -17,7 +17,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, enabled: true },
   { href: "/properties", label: "Properties", icon: Building2, enabled: true },
   { href: "/tenants", label: "Tenants", icon: Users, enabled: true },
-  { href: "/finances", label: "Finances", icon: Receipt, enabled: false },
+  { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
   { href: "/complaints", label: "Complaints", icon: MessageSquare, enabled: false, badge: 2 },
   { href: "/settings", label: "Settings", icon: Settings, enabled: false },
 ];

@@ -179,7 +179,83 @@ export async function getRentRecordsForOrg(
     orderBy: { createdAt: "desc" },
     include: { unit: { select: { unitNumber: true, propertyId: true } } },
   });
-  return paginate(items);
+
+  // RentRecord.tenantId has no Prisma relation (matches the original schema
+  // spec) — same batched-lookup pattern used for Complaint.
+  const tenantIds = [...new Set(items.map((r) => r.tenantId))];
+  const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
+  const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+  const withTenantName = items.map((r) => ({ ...r, tenantName: nameById.get(r.tenantId) ?? "Unknown tenant" }));
+
+  return paginate(withTenantName);
+}
+
+export async function getRentRecordForOrg(orgId: string, rentRecordId: string) {
+  const record = await prisma.rentRecord.findFirst({
+    where: { id: rentRecordId, unit: { property: { orgId } } },
+  });
+  if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+  return record;
+}
+
+// Spec: Security §3 — RentRecord status changes are never destructive; every
+// change writes a PaymentEvent (who, what, when, previous status, new status).
+export async function markRentRecordPaid(
+  orgId: string,
+  actorId: string,
+  input: {
+    rentRecordId: string;
+    method: string;
+    referenceNo?: string;
+    amountUsd: number;
+  },
+) {
+  const record = await getRentRecordForOrg(orgId, input.rentRecordId);
+
+  const [updated] = await prisma.$transaction([
+    prisma.rentRecord.update({
+      where: { id: record.id },
+      data: {
+        status: "PAID",
+        paymentMethod: input.method as never,
+        referenceNo: input.referenceNo,
+        amountPaidUsd: input.amountUsd,
+        paidAt: new Date(),
+      },
+    }),
+    prisma.paymentEvent.create({
+      data: {
+        rentRecordId: record.id,
+        actorId,
+        source: "MANUAL",
+        fromStatus: record.status,
+        toStatus: "PAID",
+        amountUsd: input.amountUsd,
+        method: input.method as never,
+        referenceNo: input.referenceNo,
+      },
+    }),
+  ]);
+
+  return updated;
+}
+
+export async function getRentLedgerStats(orgId: string, periodMonth: number, periodYear: number) {
+  const records = await prisma.rentRecord.findMany({
+    where: { unit: { property: { orgId } }, periodMonth, periodYear },
+    select: { status: true, amountDueUsd: true, amountPaidUsd: true },
+  });
+
+  const receivable = records.reduce((sum, r) => sum + r.amountDueUsd, 0);
+  const collected = records.reduce((sum, r) => sum + r.amountPaidUsd, 0);
+  const outstanding = receivable - collected;
+  // Schema tracks status, not per-record due-date aging, so "30+ days overdue"
+  // is approximated as the OVERDUE status bucket — see CLAUDE.md-adjacent note
+  // in the router: a real day-level aging calculation needs a due-date field
+  // this schema doesn't have.
+  const overdue30Plus = records.filter((r) => r.status === "OVERDUE").reduce((sum, r) => sum + r.amountDueUsd, 0);
+
+  return { receivable, collected, outstanding, overdue30Plus };
 }
 
 export async function getTenanciesForOrg(orgId: string, { cursor }: Cursor = {}) {
@@ -222,10 +298,28 @@ export async function getVacantUnitForOrg(orgId: string, unitId: string) {
   return unit;
 }
 
-// ---- Exchange rate (read-only display for Step 4 — override/cron is Step 5) --
+// ---- Exchange rate ----------------------------------------------------
+// Spec: lib/exchange-rate.ts — RBZ scrape cron + Redis cache are explicitly
+// deferred (no verified RBZ endpoint to scrape against — see lib/exchange-rate.ts
+// comment). What's real here: reading the latest rate (global scrape or a
+// landlord's own manual override) and landlords setting their own override,
+// which is what the ledger's currency toggle actually needs to function.
 
-export async function getLatestExchangeRate() {
-  return prisma.exchangeRate.findFirst({ orderBy: { date: "desc" } });
+export async function getLatestExchangeRate(orgId?: string) {
+  if (orgId) {
+    const orgOverride = await prisma.exchangeRate.findFirst({
+      where: { setByOrg: orgId },
+      orderBy: { date: "desc" },
+    });
+    if (orgOverride) return orgOverride;
+  }
+  return prisma.exchangeRate.findFirst({ where: { setByOrg: null }, orderBy: { date: "desc" } });
+}
+
+export async function setManualExchangeRate(orgId: string, usdToZig: number) {
+  return prisma.exchangeRate.create({
+    data: { usdToZig, source: "manual", setByOrg: orgId },
+  });
 }
 
 // ---- Dashboard ------------------------------------------------------------

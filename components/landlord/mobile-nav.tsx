@@ -11,7 +11,7 @@ import { LANDLORD_DARK } from "@/components/landlord/theme";
 const TABS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard, enabled: true },
   { href: "/properties", label: "Units", icon: Building2, enabled: true },
-  { href: "/finances", label: "Finances", icon: Receipt, enabled: false },
+  { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
   { href: "/complaints", label: "Issues", icon: MessageSquare, enabled: false, badge: 2 },
   { href: "/tenants", label: "More", icon: MoreHorizontal, enabled: true },
 ];
