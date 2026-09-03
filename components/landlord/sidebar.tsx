@@ -44,7 +44,7 @@ export function LandlordSidebar({
 
   return (
     <aside
-      className="flex h-screen w-60 shrink-0 flex-col"
+      className="hidden h-screen w-60 shrink-0 flex-col sm:flex"
       style={{ backgroundColor: t.sidebarBg, color: t.fg }}
     >
       <div className="flex items-center gap-2 px-5 py-6">

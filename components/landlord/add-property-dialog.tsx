@@ -63,7 +63,9 @@ export function AddPropertyDialog() {
           />
         }
       >
-        <Plus className="h-4 w-4" /> ADD PROPERTY
+        <Plus className="h-4 w-4" />
+        <span className="sm:hidden">ADD</span>
+        <span className="hidden sm:inline">ADD PROPERTY</span>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

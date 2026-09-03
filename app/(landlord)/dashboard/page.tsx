@@ -13,6 +13,10 @@ import { CurrencyDisplay } from "@/components/landlord/currency-display";
 import { LANDLORD_DARK, PRIORITY_GLOW, PAYMENT_BADGE, RENT_STATUS_BADGE } from "@/components/landlord/theme";
 import { formatRelativeTime } from "@/lib/utils";
 
+function compactUsd(amount: number) {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(amount);
+}
+
 export default async function DashboardPage() {
   const { userId } = await auth();
   const user = await prisma.user.findUniqueOrThrow({
@@ -33,14 +37,35 @@ export default async function DashboardPage() {
     .toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     .toUpperCase();
 
+  const statCards = [
+    { label: "UNITS", value: `${stats.occupiedUnits}/${stats.totalUnits}`, sub: "occupied" },
+    {
+      labelFull: "RENT COLLECTED",
+      labelCompact: "COLLECTED",
+      valueFull: `$${stats.collectedUsd.toLocaleString()}`,
+      valueCompact: `$${compactUsd(stats.collectedUsd)}`,
+      subFull: `of $${stats.dueUsd.toLocaleString()} due`,
+      subCompact: `of $${compactUsd(stats.dueUsd)}`,
+      subColor: "#4ade80",
+    },
+    {
+      labelFull: "OPEN COMPLAINTS",
+      labelCompact: "COMPLAINTS",
+      value: String(stats.openComplaints),
+      sub: stats.criticalComplaints > 0 ? `${stats.criticalComplaints} critical` : undefined,
+      subColor: "#f87171",
+    },
+    { label: "SMS CREDITS", value: String(stats.smsCredits), sub: "remaining" },
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl p-8">
+    <div className="mx-auto max-w-6xl p-6 sm:p-8">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-mono text-xs tracking-wide" style={{ color: t.fgMuted }}>
             {today}
           </p>
-          <h1 className="font-heading text-3xl font-extrabold" style={{ color: t.fg }}>
+          <h1 className="font-heading text-2xl font-extrabold sm:text-3xl" style={{ color: t.fg }}>
             Good morning, {user.name.split(" ")[0]}
           </h1>
         </div>
@@ -53,9 +78,10 @@ export default async function DashboardPage() {
               1 USD ≈ {exchangeRate.usdToZig.toLocaleString()} ZiG
             </span>
           )}
+          {/* MobileTopBar already renders a bell on mobile — avoid duplicating it. */}
           <button
             type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-full"
+            className="hidden h-9 w-9 items-center justify-center rounded-full sm:flex"
             style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
             aria-label="Notifications"
           >
@@ -83,32 +109,38 @@ export default async function DashboardPage() {
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <CollectionsStat pct={stats.onTimeCollectionsPct} trend={stats.onTimeCollectionsTrend} />
         <div className="grid grid-cols-2 gap-4">
-          {[
-            { label: "UNITS", value: `${stats.occupiedUnits}/${stats.totalUnits}`, sub: "occupied" },
-            {
-              label: "RENT COLLECTED",
-              value: `$${stats.collectedUsd.toLocaleString()}`,
-              sub: `of $${stats.dueUsd.toLocaleString()} due`,
-              subColor: "#4ade80",
-            },
-            {
-              label: "OPEN COMPLAINTS",
-              value: String(stats.openComplaints),
-              sub: stats.criticalComplaints > 0 ? `${stats.criticalComplaints} critical` : undefined,
-              subColor: "#f87171",
-            },
-            { label: "SMS CREDITS", value: String(stats.smsCredits), sub: "remaining" },
-          ].map((s) => (
-            <div key={s.label} className="rounded-2xl p-4" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
+          {statCards.map((s, i) => (
+            <div key={i} className="rounded-2xl p-4" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
               <p className="font-mono text-[10px] tracking-wide" style={{ color: t.fgMuted }}>
-                {s.label}
+                {"labelFull" in s ? (
+                  <>
+                    <span className="sm:hidden">{s.labelCompact}</span>
+                    <span className="hidden sm:inline">{s.labelFull}</span>
+                  </>
+                ) : (
+                  s.label
+                )}
               </p>
-              <p className="font-heading mt-1 text-2xl font-extrabold" style={{ color: t.fg }}>
-                {s.value}
+              <p className="font-heading mt-1 text-xl font-extrabold sm:text-2xl" style={{ color: t.fg }}>
+                {"valueFull" in s ? (
+                  <>
+                    <span className="sm:hidden">{s.valueCompact}</span>
+                    <span className="hidden sm:inline">{s.valueFull}</span>
+                  </>
+                ) : (
+                  s.value
+                )}
               </p>
-              {s.sub && (
+              {("subFull" in s || s.sub) && (
                 <p className="text-xs" style={{ color: s.subColor ?? t.fgMuted }}>
-                  {s.sub}
+                  {"subFull" in s ? (
+                    <>
+                      <span className="sm:hidden">{s.subCompact}</span>
+                      <span className="hidden sm:inline">{s.subFull}</span>
+                    </>
+                  ) : (
+                    s.sub
+                  )}
                 </p>
               )}
             </div>
@@ -140,11 +172,14 @@ export default async function DashboardPage() {
               >
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-white">
-                    Unit {c.unit.unitNumber} · {c.title.split(" — ")[0].split(" ").slice(0, 4).join(" ")}
+                    Unit {c.unit.unitNumber} · {c.tenantName}
                   </p>
-                  <span className="shrink-0 text-xs text-white/60">{formatRelativeTime(c.createdAt)}</span>
+                  <span className="shrink-0 text-xs text-white/60">
+                    <span className="sm:hidden">{formatRelativeTime(c.createdAt, { short: true })}</span>
+                    <span className="hidden sm:inline">{formatRelativeTime(c.createdAt)}</span>
+                  </span>
                 </div>
-                <p className="mt-0.5 text-sm text-white/80">{c.description}</p>
+                <p className="mt-0.5 text-sm text-white/80">{c.title}</p>
               </div>
             ))}
           </div>
@@ -171,7 +206,7 @@ export default async function DashboardPage() {
               return (
                 <div
                   key={r.id}
-                  className="flex items-center justify-between px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
                   style={i > 0 ? { borderTop: `1px solid ${t.cardBorder}` } : undefined}
                 >
                   <p className="text-sm font-medium" style={{ color: t.fg }}>

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getUnitCountForOrg } from "@/lib/db/scoped";
 import { LandlordSidebar } from "@/components/landlord/sidebar";
+import { MobileTopBar, MobileTabBar } from "@/components/landlord/mobile-nav";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
 export default async function LandlordLayout({ children }: { children: React.ReactNode }) {
@@ -32,7 +33,9 @@ export default async function LandlordLayout({ children }: { children: React.Rea
         tier={user.organization?.tier ?? "TRIAL"}
         unitCount={unitCount}
       />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <MobileTopBar />
+      <main className="flex-1 overflow-y-auto pt-14 pb-16 sm:pt-0 sm:pb-0">{children}</main>
+      <MobileTabBar />
     </div>
   );
 }

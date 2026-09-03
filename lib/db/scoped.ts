@@ -152,7 +152,16 @@ export async function getComplaintsForOrg(orgId: string, { cursor }: Cursor = {}
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     include: { unit: { select: { unitNumber: true, propertyId: true } } },
   });
-  return paginate(items);
+
+  // Complaint.tenantId has no Prisma relation (matches the original schema
+  // spec) — batch-fetch names separately rather than N+1 or adding a
+  // relation just for display purposes.
+  const tenantIds = [...new Set(items.map((c) => c.tenantId))];
+  const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
+  const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+  const withTenantName = items.map((c) => ({ ...c, tenantName: nameById.get(c.tenantId) ?? "Unknown tenant" }));
+
+  return paginate(withTenantName);
 }
 
 export async function getRentRecordsForOrg(
