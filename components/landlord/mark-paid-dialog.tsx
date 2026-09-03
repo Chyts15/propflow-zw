@@ -38,15 +38,21 @@ export function MarkPaidDialog({
   amountDueUsd,
   open,
   onOpenChange,
+  defaultMethod,
+  defaultReferenceNo,
+  proofImageUrl,
 }: {
   rentRecordId: string;
   unitNumber: string;
   amountDueUsd: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultMethod?: (typeof PAYMENT_METHODS)[number]["value"] | null;
+  defaultReferenceNo?: string | null;
+  proofImageUrl?: string | null;
 }) {
   const router = useRouter();
-  const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]["value"]>("ECOCASH");
+  const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]["value"]>(defaultMethod ?? "ECOCASH");
   const markPaid = trpc.rent.markPaid.useMutation({
     onSuccess: () => {
       toast.success(`Unit ${unitNumber} marked paid`);
@@ -73,6 +79,12 @@ export function MarkPaidDialog({
         <DialogHeader>
           <DialogTitle>Mark Unit {unitNumber} Paid</DialogTitle>
         </DialogHeader>
+        {proofImageUrl && (
+          <div className="relative h-40 w-full overflow-hidden rounded-lg bg-black/5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={proofImageUrl} alt="Tenant-submitted proof" className="h-full w-full object-contain" />
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <Label htmlFor="method">Payment method</Label>
@@ -96,14 +108,21 @@ export function MarkPaidDialog({
           {method === "ECOCASH" && (
             <div>
               <Label htmlFor="referenceNo">EcoCash reference</Label>
-              <Input id="referenceNo" name="referenceNo" required placeholder="EC1234567890" pattern="EC\d{10}" />
+              <Input
+                id="referenceNo"
+                name="referenceNo"
+                required
+                placeholder="EC1234567890"
+                pattern="EC\d{10}"
+                defaultValue={defaultReferenceNo ?? ""}
+              />
               <p className="mt-1 text-xs text-muted-foreground">Format: EC followed by 10 digits</p>
             </div>
           )}
           {method !== "ECOCASH" && (
             <div>
               <Label htmlFor="referenceNo">Reference (optional)</Label>
-              <Input id="referenceNo" name="referenceNo" />
+              <Input id="referenceNo" name="referenceNo" defaultValue={defaultReferenceNo ?? ""} />
             </div>
           )}
           <div>

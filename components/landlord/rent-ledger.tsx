@@ -16,6 +16,7 @@ type RentRow = {
   amountDueUsd: number;
   status: string;
   paymentMethod: string | null;
+  referenceNo: string | null;
   proofImageUrl: string | null;
 };
 
@@ -233,6 +234,9 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
           amountDueUsd={markPaidRow.amountDueUsd}
           open={!!markPaidRow}
           onOpenChange={(open) => !open && setMarkPaidRow(null)}
+          defaultMethod={markPaidRow.paymentMethod as never}
+          defaultReferenceNo={markPaidRow.referenceNo}
+          proofImageUrl={markPaidRow.proofImageUrl}
         />
       )}
     </div>

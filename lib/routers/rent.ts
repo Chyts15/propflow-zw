@@ -6,11 +6,14 @@ import {
   getRentLedgerStats,
   markRentRecordPaid,
   setManualExchangeRate,
+  submitPaymentProofForTenant,
 } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
+import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
 
 const PAYMENT_METHODS = ["ECOCASH", "ONEMONEY", "INNBUCKS", "BANK_TRANSFER", "CASH_USD", "CASH_ZIG"] as const;
 const ECOCASH_REF = /^EC\d{10}$/;
+const CONTENT_TYPES = ["image/jpeg", "image/png"] as const;
 
 const periodInput = z.object({
   periodMonth: z.number().int().min(1).max(12).optional(),
@@ -60,6 +63,48 @@ export const rentRouter = router({
     .input(z.object({ cursor: z.string().cuid().optional() }).optional())
     .query(({ ctx, input }) => getRentHistoryForTenant(ctx.dbUser.id, { cursor: input?.cursor })),
 
-  // sendReminder (SMS) and proof upload land in Step 7/8 once lib/sms and
-  // lib/storage/r2 are wired to real routers.
+  // Spec §7 — tenant submits proof of a payment already made directly to the
+  // landlord. Stays PENDING until the landlord confirms via markPaid above.
+  submitProof: tenantProcedure
+    .input(
+      z
+        .object({
+          rentRecordId: z.string().cuid(),
+          method: z.enum(PAYMENT_METHODS),
+          referenceNo: z.string().max(40).optional(),
+          proofImageUrl: z.string().url(),
+        })
+        .superRefine((val, ctx) => {
+          if (val.method === "ECOCASH" && !ECOCASH_REF.test(val.referenceNo ?? "")) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["referenceNo"],
+              message: "EcoCash reference must be EC followed by 10 digits",
+            });
+          }
+        }),
+    )
+    .mutation(({ ctx, input }) => {
+      const { rentRecordId, ...data } = input;
+      return submitPaymentProofForTenant(ctx.dbUser.id, rentRecordId, data);
+    }),
+
+  // Spec: Security §5 — presigned, validated server-side before issuing.
+  getUploadUrl: tenantProcedure
+    .input(
+      z.object({
+        contentType: z.enum(CONTENT_TYPES),
+        contentLength: z.number().int().positive().max(5 * 1024 * 1024),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      if (!isR2Configured()) {
+        throw new Error("File uploads are not configured yet (R2 credentials missing)");
+      }
+      const ext = input.contentType.split("/")[1];
+      const key = `rent-proof/${ctx.dbUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      return createUploadUrl({ key, contentType: input.contentType, contentLength: input.contentLength });
+    }),
+
+  // sendReminder (SMS) lands in Step 7 once lib/sms is wired to real routers.
 });

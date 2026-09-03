@@ -481,6 +481,24 @@ export async function getRentHistoryForTenant(tenantId: string, { cursor }: Curs
   return paginate(items);
 }
 
+// Tenant submits proof of a payment they already made directly to the
+// landlord (EcoCash/bank/cash) — this is NOT the landlord confirming receipt
+// (that's markRentRecordPaid, which is what actually writes the PaymentEvent
+// per Security §3). Submitting proof only records the tenant's claim; the
+// RentRecord stays PENDING until the landlord confirms via Mark Paid.
+export async function submitPaymentProofForTenant(
+  tenantId: string,
+  rentRecordId: string,
+  data: { method: string; referenceNo?: string; proofImageUrl: string },
+) {
+  const { count } = await prisma.rentRecord.updateMany({
+    where: { id: rentRecordId, tenantId },
+    data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
+  });
+  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+  return prisma.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
+}
+
 export async function getComplaintsForTenant(tenantId: string, { cursor }: Cursor = {}) {
   const items = await prisma.complaint.findMany({
     where: { tenantId },
