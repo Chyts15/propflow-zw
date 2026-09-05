@@ -33,7 +33,7 @@ export function LandlordSidebar({
     { href: "/tenants", label: "Tenants", icon: Users, enabled: true },
     { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
     { href: "/complaints", label: "Complaints", icon: MessageSquare, enabled: true, badge: openComplaintsCount || undefined },
-    { href: "/settings", label: "Settings", icon: Settings, enabled: false },
+    { href: "/settings", label: "Settings", icon: Settings, enabled: true },
   ];
   const t = LANDLORD_DARK;
   const initials = userName

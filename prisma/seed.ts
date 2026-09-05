@@ -301,6 +301,29 @@ async function main() {
     },
   });
 
+  await prisma.billingEvent.create({
+    data: {
+      orgId: org.id,
+      type: "SUBSCRIPTION_PAYMENT",
+      status: $Enums.BillingEventStatus.PAID,
+      amountUsd: 25,
+      paynowRef: "PF-SEED0001-1748000000000",
+      description: "Subscription",
+      createdAt: new Date("2026-06-01"),
+    },
+  });
+  await prisma.billingEvent.create({
+    data: {
+      orgId: org.id,
+      type: "SMS_BUNDLE",
+      status: $Enums.BillingEventStatus.PAID,
+      amountUsd: 12,
+      paynowRef: "PF-SEED0001-1747000000000",
+      description: "SMS bundle · 500",
+      createdAt: new Date("2026-05-12"),
+    },
+  });
+
   console.log(`Seeded: 1 org, 1 landlord, ${occupiedUnits.length} tenants, ${propertiesSeed.length} properties, ${complaintsSeed.length} complaints, ${occupiedUnits.length} rent records.`);
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, landlordProcedure, tenantProcedure } from "@/lib/trpc";
+import { router, landlordProcedure, landlordWriteProcedure, tenantProcedure } from "@/lib/trpc";
 import {
   getRentRecordsForOrg,
   getRentHistoryForTenant,
@@ -31,12 +31,12 @@ export const rentRouter = router({
 
   exchangeRate: landlordProcedure.query(({ ctx }) => resolveExchangeRate(ctx.orgId)),
 
-  setExchangeRate: landlordProcedure
+  setExchangeRate: landlordWriteProcedure
     .input(z.object({ usdToZig: z.number().positive() }))
     .mutation(({ ctx, input }) => setManualExchangeRate(ctx.orgId, input.usdToZig)),
 
   // Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
-  markPaid: landlordProcedure
+  markPaid: landlordWriteProcedure
     .input(
       z
         .object({

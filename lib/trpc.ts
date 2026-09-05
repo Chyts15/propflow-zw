@@ -59,6 +59,30 @@ export const landlordProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx: { ...ctx, orgId: ctx.dbUser.orgId } });
 });
 
+const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Every landlord MUTATION (never a query) goes through this instead of
+// landlordProcedure directly — spec: "PAST_DUE = landlord read-only after
+// 7-day grace. Never hard-block, never delete data." billing.initiate is the
+// one exception (it stays on landlordProcedure) since paying is how an org
+// escapes PAST_DUE in the first place.
+export const landlordWriteProcedure = landlordProcedure.use(async ({ ctx, next }) => {
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { id: ctx.orgId },
+    select: { subscriptionStatus: true, pastDueSince: true },
+  });
+  if (org.subscriptionStatus === "PAST_DUE" && org.pastDueSince) {
+    const graceExpired = Date.now() - org.pastDueSince.getTime() > PAST_DUE_GRACE_MS;
+    if (graceExpired) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Your PropFlow subscription is past due — renew billing to make changes. Your data is safe and reads still work.",
+      });
+    }
+  }
+  return next({ ctx });
+});
+
 // requires role TENANT, injects ctx.tenancy
 export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (ctx.dbUser.role !== "TENANT") {

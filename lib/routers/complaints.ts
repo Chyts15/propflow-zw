@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, landlordProcedure, tenantProcedure } from "@/lib/trpc";
+import { router, landlordProcedure, landlordWriteProcedure, tenantProcedure } from "@/lib/trpc";
 import {
   getComplaintsForOrg,
   getComplaintsForTenant,
@@ -24,15 +24,15 @@ export const complaintsRouter = router({
     .input(z.object({ complaintId: z.string().cuid() }))
     .query(({ ctx, input }) => getComplaintForOrg(ctx.orgId, input.complaintId)),
 
-  updateStatus: landlordProcedure
+  updateStatus: landlordWriteProcedure
     .input(z.object({ complaintId: z.string().cuid(), status: z.enum(STATUSES) }))
     .mutation(({ ctx, input }) => updateComplaintStatus(ctx.orgId, input.complaintId, input.status)),
 
-  updatePriority: landlordProcedure
+  updatePriority: landlordWriteProcedure
     .input(z.object({ complaintId: z.string().cuid(), priority: z.enum(PRIORITIES) }))
     .mutation(({ ctx, input }) => updateComplaintPriority(ctx.orgId, input.complaintId, input.priority)),
 
-  reply: landlordProcedure
+  reply: landlordWriteProcedure
     .input(z.object({ complaintId: z.string().cuid(), body: z.string().min(1).max(2000), imageUrls: z.array(z.string()).max(3).default([]) }))
     .mutation(({ ctx, input }) =>
       addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls),

@@ -37,3 +37,15 @@ async function fixedWindowLimit(key: string, limit: number, windowSeconds: numbe
 export const authRateLimit = (ip: string) => fixedWindowLimit(`ratelimit:auth:${ip}`, 10, 60);
 export const uploadRateLimit = (userId: string) => fixedWindowLimit(`ratelimit:upload:${userId}`, 20, 3600);
 export const smsRateLimit = (orgId: string) => fixedWindowLimit(`ratelimit:sms:${orgId}`, 30, 3600);
+
+// Webhook idempotency fast-path (spec: Security §2 — "key = Paynow reference,
+// stored in Redis 24h"). Not the source of truth: BillingEvent.paynowRef's
+// unique constraint + the PENDING-status guard in finalizeBillingEvent is
+// what actually makes a replay safe. This just skips the extra Paynow
+// re-poll call for a webhook we've already handled in the last 24h.
+export async function claimIdempotencyKey(key: string, ttlSeconds = 86400): Promise<boolean> {
+  const client = getRedis();
+  if (!client) return true; // not configured — DB-level guard still protects
+  const result = await client.set(key, "1", { nx: true, ex: ttlSeconds });
+  return result === "OK";
+}

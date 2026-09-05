@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { clerkClient } from "@clerk/nextjs/server";
-import { router, landlordProcedure } from "@/lib/trpc";
+import { router, landlordProcedure, landlordWriteProcedure } from "@/lib/trpc";
 import { getTenanciesForOrg, getVacantUnitForOrg } from "@/lib/db/scoped";
 
 export const tenantsRouter = router({
@@ -11,7 +11,7 @@ export const tenantsRouter = router({
   // Tenant accounts never self-register — this sends a real Clerk invitation
   // carrying the unit assignment in publicMetadata. lib/webhooks/clerk picks
   // it up on user.created and creates the User + Tenancy rows.
-  invite: landlordProcedure
+  invite: landlordWriteProcedure
     .input(
       z.object({
         unitId: z.string().cuid(),

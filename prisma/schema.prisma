@@ -82,6 +82,13 @@ enum PaymentEventSource {
   SYSTEM
 }
 
+enum BillingEventStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
 model User {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -111,6 +118,10 @@ model Organization {
   trialEndsAt        DateTime
   currentPeriodEnd   DateTime?
   isAnnual           Boolean            @default(false)
+  // Set when subscriptionStatus first flips to PAST_DUE; cleared on
+  // reactivation. Read-only gating (landlordWriteProcedure) compares this
+  // against the 7-day grace window — see CLAUDE.md § Tier Gating.
+  pastDueSince       DateTime?
   smsCredits         Int                @default(20) // trial gift
   atSenderId         String?
   createdAt          DateTime           @default(now())
@@ -265,13 +276,16 @@ model PaymentEvent {
 }
 
 model BillingEvent {
-  id          String   @id @default(cuid())
+  id          String             @id @default(cuid())
   orgId       String
   type        String // SUBSCRIPTION_PAYMENT | SMS_BUNDLE | TIER_CHANGE | TRIAL_START
+  status      BillingEventStatus @default(PENDING)
   amountUsd   Float
-  paynowRef   String?  @unique // idempotency anchor
+  paynowRef   String?            @unique // our merchant reference — idempotency anchor
+  pollUrl     String? // Paynow's poll URL, stashed at initiate for the webhook's re-poll
+  metadata    Json? // { tier, isAnnual } | { smsQty } — what to activate once PAID
   description String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime           @default(now())
 
   org Organization @relation(fields: [orgId], references: [id])
 

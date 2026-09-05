@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, landlordProcedure } from "@/lib/trpc";
+import { router, landlordProcedure, landlordWriteProcedure } from "@/lib/trpc";
 import {
   getPropertiesForOrg,
   getPropertyForOrg,
@@ -32,18 +32,18 @@ export const propertiesRouter = router({
     .input(z.object({ propertyId: z.string().cuid() }))
     .query(({ ctx, input }) => getPropertyForOrg(ctx.orgId, input.propertyId)),
 
-  create: landlordProcedure
+  create: landlordWriteProcedure
     .input(propertyInput)
     .mutation(({ ctx, input }) => createPropertyForOrg(ctx.orgId, ctx.dbUser.id, input)),
 
-  update: landlordProcedure
+  update: landlordWriteProcedure
     .input(z.object({ propertyId: z.string().cuid() }).merge(propertyInput.partial()))
     .mutation(({ ctx, input }) => {
       const { propertyId, ...data } = input;
       return updatePropertyForOrg(ctx.orgId, propertyId, data);
     }),
 
-  remove: landlordProcedure
+  remove: landlordWriteProcedure
     .input(z.object({ propertyId: z.string().cuid() }))
     .mutation(({ ctx, input }) => deletePropertyForOrg(ctx.orgId, input.propertyId)),
 });

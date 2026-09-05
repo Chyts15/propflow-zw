@@ -1,7 +1,15 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
-import type { Currency, PropertyType, ComplaintStatus, ComplaintPriority, UserRole } from "@/generated/prisma/client";
+import type {
+  Currency,
+  PropertyType,
+  ComplaintStatus,
+  ComplaintPriority,
+  UserRole,
+  SubscriptionTier,
+  Prisma,
+} from "@/generated/prisma/client";
 
 /**
  * ALL org-owned data access (Property/Unit/Tenancy/Complaint/RentRecord) goes
@@ -507,6 +515,83 @@ export async function getComplaintsForTenant(tenantId: string, { cursor }: Curso
     orderBy: { createdAt: "desc" },
   });
   return paginate(items);
+}
+
+// ---- Billing (Paynow subscription + SMS bundles) — CLAUDE.md Security First:
+// financial state changes always write a BillingEvent, webhooks always
+// re-poll + check idempotency before mutating Organization. ----------------
+
+type BillingMetadata = { tier: SubscriptionTier; isAnnual: boolean } | { smsQty: number };
+
+export async function createPendingBillingEvent(
+  orgId: string,
+  data: { type: string; amountUsd: number; paynowRef: string; description: string; metadata: BillingMetadata },
+) {
+  return prisma.billingEvent.create({
+    data: { orgId, status: "PENDING", ...data, metadata: data.metadata as Prisma.InputJsonValue },
+  });
+}
+
+export async function setBillingEventPollUrl(id: string, pollUrl: string) {
+  return prisma.billingEvent.update({ where: { id }, data: { pollUrl } });
+}
+
+export async function getBillingEventByRef(paynowRef: string) {
+  return prisma.billingEvent.findUnique({ where: { paynowRef } });
+}
+
+export async function getBillingHistoryForOrg(orgId: string) {
+  return prisma.billingEvent.findMany({
+    where: { orgId, status: "PAID" },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+}
+
+// Transitions a PENDING event exactly once — the status guard in the WHERE
+// clause makes a replayed webhook a no-op (spec: Security §2 idempotency).
+export async function finalizeBillingEvent(id: string, status: "PAID" | "FAILED" | "CANCELLED") {
+  const { count } = await prisma.billingEvent.updateMany({ where: { id, status: "PENDING" }, data: { status } });
+  return count > 0;
+}
+
+// Applies what a successful BillingEvent promised (tier switch or SMS top-up).
+// Only called after finalizeBillingEvent's guard confirms this is the one
+// call that gets to act on it.
+export async function activateOrgFromBillingEvent(
+  orgId: string,
+  event: { type: string; metadata: unknown },
+) {
+  const meta = event.metadata as BillingMetadata | null;
+  if (event.type === "SUBSCRIPTION_PAYMENT" && meta && "tier" in meta) {
+    const periodDays = meta.isAnnual ? 365 : 30;
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        tier: meta.tier,
+        subscriptionStatus: "ACTIVE",
+        isAnnual: meta.isAnnual,
+        currentPeriodEnd: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000),
+        pastDueSince: null,
+      },
+    });
+  } else if (event.type === "SMS_BUNDLE" && meta && "smsQty" in meta) {
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { smsCredits: { increment: meta.smsQty } },
+    });
+  }
+}
+
+// Daily cron: expired trials that never paid become PAST_DUE. Never deletes
+// data — read-only gating (landlordWriteProcedure) is what actually bites,
+// once 7 days past pastDueSince (spec: "PAST_DUE = read-only after 7-day grace").
+export async function expireOverdueTrials() {
+  const { count } = await prisma.organization.updateMany({
+    where: { subscriptionStatus: "TRIALING", trialEndsAt: { lt: new Date() } },
+    data: { subscriptionStatus: "PAST_DUE", pastDueSince: new Date() },
+  });
+  return count;
 }
 
 // ---- helpers --------------------------------------------------------------

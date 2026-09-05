@@ -7,7 +7,9 @@ import { LANDLORD_DARK } from "@/components/landlord/theme";
 
 // Bottom tab bar collapses the sidebar's 6 sections into 5 slots, matching
 // the mockup's Home/Units/Finances/Issues/More pattern — Tenants and
-// Settings fold into "More" (no dedicated mobile mockup shows a 6th tab).
+// Settings fold into a "More" menu page (app/(landlord)/more) rather than a
+// 6th tab; the mockup itself shows "More" as the active tab while on
+// Settings → Billing.
 
 export function MobileTopBar() {
   const t = LANDLORD_DARK;
@@ -45,7 +47,7 @@ export function MobileTabBar({ openComplaintsCount = 0 }: { openComplaintsCount?
     { href: "/properties", label: "Units", icon: Building2, enabled: true },
     { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
     { href: "/complaints", label: "Issues", icon: MessageSquare, enabled: true, badge: openComplaintsCount || undefined },
-    { href: "/tenants", label: "More", icon: MoreHorizontal, enabled: true },
+    { href: "/more", label: "More", icon: MoreHorizontal, enabled: true, extraActiveOn: ["/tenants", "/settings"] },
   ];
 
   return (
@@ -53,8 +55,12 @@ export function MobileTabBar({ openComplaintsCount = 0 }: { openComplaintsCount?
       className="fixed inset-x-0 bottom-0 z-20 flex h-16 items-stretch justify-around sm:hidden"
       style={{ backgroundColor: t.sidebarBg, borderTop: `1px solid ${t.cardBorder}` }}
     >
-      {TABS.map(({ href, label, icon: Icon, enabled, badge }) => {
-        const active = enabled && (pathname === href || pathname.startsWith(`${href}/`));
+      {TABS.map(({ href, label, icon: Icon, enabled, badge, extraActiveOn }) => {
+        const active =
+          enabled &&
+          (pathname === href ||
+            pathname.startsWith(`${href}/`) ||
+            (extraActiveOn?.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ?? false));
         return (
           <Link
             key={href}
