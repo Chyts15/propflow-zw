@@ -16,10 +16,36 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { UpgradePrompt } from "@/components/shared/upgrade-prompt";
 
-export function AddUnitDialog({ propertyId }: { propertyId: string }) {
+export function AddUnitDialog({
+  propertyId,
+  atCap,
+  capMessage,
+}: {
+  propertyId: string;
+  /** Org is at/over its tier's unit cap — blur the trigger, show UpgradePrompt instead (never hard-block: the dialog just doesn't open). */
+  atCap?: boolean;
+  capMessage?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  if (atCap) {
+    return (
+      <div className="relative">
+        <Button
+          disabled
+          variant="outline"
+          className="pointer-events-none border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light opacity-40 blur-[1px]"
+        >
+          <Plus className="h-4 w-4" /> ADD UNIT
+        </Button>
+        <UpgradePrompt message={capMessage ?? "You've reached your plan's unit limit."} />
+      </div>
+    );
+  }
+
   const create = trpc.units.create.useMutation({
     onSuccess: () => {
       toast.success("Unit added");

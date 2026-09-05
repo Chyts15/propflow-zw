@@ -9,7 +9,9 @@ import {
   updateComplaintPriority,
   addComplaintMessageForOrg,
 } from "@/lib/db/scoped";
+import { TRPCError } from "@trpc/server";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
+import { uploadRateLimit } from "@/lib/rate-limit";
 
 const STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_PARTS", "RESOLVED", "CLOSED"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
@@ -66,10 +68,12 @@ export const complaintsRouter = router({
         contentLength: z.number().int().positive().max(5 * 1024 * 1024),
       }),
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       if (!isR2Configured()) {
         throw new Error("File uploads are not configured yet (R2 credentials missing)");
       }
+      const { success } = await uploadRateLimit(ctx.dbUser.id);
+      if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many uploads — try again later" });
       const ext = input.contentType === "application/pdf" ? "pdf" : input.contentType.split("/")[1];
       const key = `complaints/${ctx.dbUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       return createUploadUrl({ key, contentType: input.contentType, contentLength: input.contentLength });

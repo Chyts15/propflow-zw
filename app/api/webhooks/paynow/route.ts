@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { getBillingEventByRef, finalizeBillingEvent, activateOrgFromBillingEvent } from "@/lib/db/scoped";
 import { verifyAndPollWebhook } from "@/lib/payments/paynow";
 import { claimIdempotencyKey } from "@/lib/rate-limit";
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
   try {
     statusResponse = await verifyAndPollWebhook(payload, event.pollUrl);
   } catch (err) {
-    console.error("Paynow webhook rejected — hash mismatch or poll failure", err);
+    Sentry.captureException(err, { tags: { area: "paynow-webhook" }, extra: { reference } });
     return new Response("Invalid", { status: 400 });
   }
 

@@ -3,7 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import type { Tenancy } from "@/generated/prisma/client";
+import { findTenancyByTenantId } from "@/lib/db/scoped";
 
 export type Context = {
   clerkUserId: string | null;
@@ -88,9 +88,7 @@ export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (ctx.dbUser.role !== "TENANT") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Tenant access required" });
   }
-  const tenancy: Tenancy | null = await prisma.tenancy.findUnique({
-    where: { tenantId: ctx.dbUser.id },
-  });
+  const tenancy = await findTenancyByTenantId(ctx.dbUser.id);
   if (!tenancy) {
     throw new TRPCError({ code: "FORBIDDEN", message: "No active tenancy" });
   }

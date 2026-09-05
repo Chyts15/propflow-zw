@@ -2,10 +2,18 @@ import type { NextRequest } from "next/server";
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
+import { authRateLimit } from "@/lib/rate-limit";
 
 // Syncs Clerk -> Postgres. Only user.created is handled; user.updated/deleted
 // are TODO for later steps.
 export async function POST(req: NextRequest) {
+  // Spec: Security §6 — auth-adjacent endpoints, 10/min per IP. This webhook
+  // is publicly reachable (no Clerk session) and creates Organization/User
+  // rows, so it's the auth-adjacent surface in our own code.
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { success } = await authRateLimit(ip);
+  if (!success) return new Response("Too many requests", { status: 429 });
+
   let evt;
   try {
     evt = await verifyWebhook(req, { signingSecret: process.env.CLERK_WEBHOOK_SECRET });

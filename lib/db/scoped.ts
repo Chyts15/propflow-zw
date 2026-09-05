@@ -479,6 +479,15 @@ export async function getTenancyForTenant(tenantId: string) {
   return tenancy;
 }
 
+// Used only by tenantProcedure's own middleware (lib/trpc.ts) to establish
+// ctx.tenancy — returns null rather than throwing so the middleware can
+// produce its own FORBIDDEN message. Kept here rather than as a raw prisma
+// call in lib/trpc.ts per CLAUDE.md § Security First (no raw Tenancy queries
+// outside this file).
+export async function findTenancyByTenantId(tenantId: string) {
+  return prisma.tenancy.findUnique({ where: { tenantId } });
+}
+
 export async function getRentHistoryForTenant(tenantId: string, { cursor }: Cursor = {}) {
   const items = await prisma.rentRecord.findMany({
     where: { tenantId },

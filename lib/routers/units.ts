@@ -1,6 +1,16 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, landlordProcedure, landlordWriteProcedure } from "@/lib/trpc";
-import { getUnitsForOrg, getUnitForOrg, createUnitForOrg, updateUnitForOrg, deleteUnitForOrg } from "@/lib/db/scoped";
+import {
+  getUnitsForOrg,
+  getUnitForOrg,
+  createUnitForOrg,
+  updateUnitForOrg,
+  deleteUnitForOrg,
+  getOrganization,
+  getUnitCountForOrg,
+} from "@/lib/db/scoped";
+import { unitCapFor, TIER_LABELS } from "@/lib/tier";
 
 const unitInput = z.object({
   unitNumber: z.string().min(1).max(20),
@@ -21,9 +31,20 @@ export const unitsRouter = router({
     .input(z.object({ unitId: z.string().cuid() }))
     .query(({ ctx, input }) => getUnitForOrg(ctx.orgId, input.unitId)),
 
+  // Spec: CLAUDE.md § Tier Gating — Starter ≤10 / Pro ≤40 units. Blocks the
+  // specific over-cap create, never touches existing units/data (the UI's
+  // blur+upgrade prompt is meant to stop the user before they even get here).
   create: landlordWriteProcedure
     .input(z.object({ propertyId: z.string().cuid() }).merge(unitInput))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const [org, unitCount] = await Promise.all([getOrganization(ctx.orgId), getUnitCountForOrg(ctx.orgId)]);
+      const cap = unitCapFor(org.tier);
+      if (cap !== null && unitCount >= cap) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Your ${TIER_LABELS[org.tier] ?? org.tier} plan is limited to ${cap} units — upgrade to add more.`,
+        });
+      }
       const { propertyId, ...data } = input;
       return createUnitForOrg(ctx.orgId, propertyId, data);
     }),

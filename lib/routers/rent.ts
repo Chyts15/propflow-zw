@@ -8,8 +8,10 @@ import {
   setManualExchangeRate,
   submitPaymentProofForTenant,
 } from "@/lib/db/scoped";
+import { TRPCError } from "@trpc/server";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
+import { uploadRateLimit } from "@/lib/rate-limit";
 
 const PAYMENT_METHODS = ["ECOCASH", "ONEMONEY", "INNBUCKS", "BANK_TRANSFER", "CASH_USD", "CASH_ZIG"] as const;
 const ECOCASH_REF = /^EC\d{10}$/;
@@ -97,10 +99,12 @@ export const rentRouter = router({
         contentLength: z.number().int().positive().max(5 * 1024 * 1024),
       }),
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       if (!isR2Configured()) {
         throw new Error("File uploads are not configured yet (R2 credentials missing)");
       }
+      const { success } = await uploadRateLimit(ctx.dbUser.id);
+      if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many uploads — try again later" });
       const ext = input.contentType.split("/")[1];
       const key = `rent-proof/${ctx.dbUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       return createUploadUrl({ key, contentType: input.contentType, contentLength: input.contentLength });

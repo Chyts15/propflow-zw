@@ -2,10 +2,11 @@ import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
-import { getPropertyForOrg } from "@/lib/db/scoped";
+import { getPropertyForOrg, getOrganization, getUnitCountForOrg } from "@/lib/db/scoped";
 import { AddUnitDialog } from "@/components/landlord/add-unit-dialog";
 import { CurrencyDisplay } from "@/components/landlord/currency-display";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
+import { unitCapFor, TIER_LABELS } from "@/lib/tier";
 
 export default async function PropertyDetailPage({
   params,
@@ -25,6 +26,11 @@ export default async function PropertyDetailPage({
     throw err;
   }
 
+  const [org, unitCount] = await Promise.all([getOrganization(user.orgId!), getUnitCountForOrg(user.orgId!)]);
+  const cap = unitCapFor(org.tier);
+  const atCap = cap !== null && unitCount >= cap;
+  const capMessage = atCap ? `Your ${TIER_LABELS[org.tier] ?? org.tier} plan is limited to ${cap} units — upgrade to add more.` : undefined;
+
   return (
     <div className="mx-auto max-w-6xl p-8">
       <h1 className="font-heading text-3xl font-extrabold" style={{ color: t.fg }}>
@@ -38,7 +44,7 @@ export default async function PropertyDetailPage({
         <h2 className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
           Units
         </h2>
-        <AddUnitDialog propertyId={property.id} />
+        <AddUnitDialog propertyId={property.id} atCap={atCap} capMessage={capMessage} />
       </div>
 
       {property.units.length === 0 ? (
