@@ -612,12 +612,93 @@ export async function getBillingRecipientsForOrg(orgId: string): Promise<string[
 // Daily cron: expired trials that never paid become PAST_DUE. Never deletes
 // data — read-only gating (landlordWriteProcedure) is what actually bites,
 // once 7 days past pastDueSince (spec: "PAST_DUE = read-only after 7-day grace").
+//
+// Select-then-update inside a transaction (rather than a bare updateMany) so
+// the caller learns exactly which orgs transitioned and can email them —
+// a bare updateMany only returns a count.
 export async function expireOverdueTrials() {
-  const { count } = await prisma.organization.updateMany({
-    where: { subscriptionStatus: "TRIALING", trialEndsAt: { lt: new Date() } },
-    data: { subscriptionStatus: "PAST_DUE", pastDueSince: new Date() },
+  return prisma.$transaction(async (tx) => {
+    const orgs = await tx.organization.findMany({
+      where: { subscriptionStatus: "TRIALING", trialEndsAt: { lt: new Date() } },
+      select: { id: true, name: true },
+    });
+    if (orgs.length === 0) return [];
+    await tx.organization.updateMany({
+      where: { id: { in: orgs.map((o) => o.id) } },
+      data: { subscriptionStatus: "PAST_DUE", pastDueSince: new Date() },
+    });
+    return orgs;
   });
-  return count;
+}
+
+// Daily cron: ACTIVE subscriptions whose currentPeriodEnd has passed without
+// a confirmed Paynow renewal become PAST_DUE. Same select-then-update shape
+// as expireOverdueTrials, for the same reason.
+export async function expireLapsedSubscriptions() {
+  return prisma.$transaction(async (tx) => {
+    const orgs = await tx.organization.findMany({
+      where: { subscriptionStatus: "ACTIVE", currentPeriodEnd: { lt: new Date() } },
+      select: { id: true, name: true },
+    });
+    if (orgs.length === 0) return [];
+    await tx.organization.updateMany({
+      where: { id: { in: orgs.map((o) => o.id) } },
+      data: { subscriptionStatus: "PAST_DUE", pastDueSince: new Date() },
+    });
+    return orgs;
+  });
+}
+
+// 3-day advance warning before a trial ends. trialExpiryWarnedAt guards
+// against re-warning on every cron run once sent (a trial only ends once).
+export async function findAndMarkTrialWarnings(withinDays = 3) {
+  const threshold = new Date(Date.now() + withinDays * 24 * 60 * 60 * 1000);
+  return prisma.$transaction(async (tx) => {
+    const orgs = await tx.organization.findMany({
+      where: {
+        subscriptionStatus: "TRIALING",
+        trialEndsAt: { lte: threshold, gt: new Date() },
+        trialExpiryWarnedAt: null,
+      },
+      select: { id: true, name: true, trialEndsAt: true },
+    });
+    if (orgs.length === 0) return [];
+    await tx.organization.updateMany({
+      where: { id: { in: orgs.map((o) => o.id) } },
+      data: { trialExpiryWarnedAt: new Date() },
+    });
+    return orgs;
+  });
+}
+
+// 3-day advance warning before a subscription renews. renewalWarnedForPeriodEnd
+// stores the currentPeriodEnd a warning was already sent for (rather than a
+// plain boolean/timestamp), so it naturally re-arms on the next renewal cycle
+// without needing to be cleared anywhere. Two DateTime columns can't be
+// compared directly in a Prisma `where`, so candidates are filtered in JS.
+export async function findAndMarkRenewalWarnings(withinDays = 3) {
+  const threshold = new Date(Date.now() + withinDays * 24 * 60 * 60 * 1000);
+  return prisma.$transaction(async (tx) => {
+    const candidates = await tx.organization.findMany({
+      where: { subscriptionStatus: "ACTIVE", currentPeriodEnd: { lte: threshold, gt: new Date() } },
+      select: {
+        id: true,
+        name: true,
+        tier: true,
+        isAnnual: true,
+        currentPeriodEnd: true,
+        renewalWarnedForPeriodEnd: true,
+      },
+    });
+    const due = candidates.filter((o) => o.renewalWarnedForPeriodEnd?.getTime() !== o.currentPeriodEnd?.getTime());
+    if (due.length === 0) return [];
+    await Promise.all(
+      due.map((o) =>
+        tx.organization.update({ where: { id: o.id }, data: { renewalWarnedForPeriodEnd: o.currentPeriodEnd } }),
+      ),
+    );
+    return due;
+  });
 }
 
 // ---- helpers --------------------------------------------------------------
