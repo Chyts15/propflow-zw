@@ -124,13 +124,25 @@ model Organization {
   pastDueSince       DateTime?
   smsCredits         Int                @default(20) // trial gift
   atSenderId         String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  // Billing-notification recipient. Nullable: falls back to the org's
+  // creating LANDLORD user's User.email (see getBillingRecipientsForOrg in
+  // lib/db/scoped.ts) — User.email is Clerk-managed and can go stale since
+  // the Clerk webhook only handles user.created, not user.updated.
+  billingEmail String?
+  // Idempotency for the 3-day advance-warning emails (lib/db/scoped.ts).
+  // trialExpiryWarnedAt is set once, since a trial only ends once.
+  // renewalWarnedForPeriodEnd stores the currentPeriodEnd a warning was
+  // already sent for, so it naturally re-arms on the next renewal cycle.
+  trialExpiryWarnedAt       DateTime?
+  renewalWarnedForPeriodEnd DateTime?
+  createdAt                 DateTime   @default(now())
+  updatedAt                 DateTime   @updatedAt
 
   members       User[]
   properties    Property[]
   billingEvents BillingEvent[]
   smsLogs       SmsLog[]
+  emailLogs     EmailLog[]
 }
 
 model Property {
@@ -305,6 +317,21 @@ model SmsLog {
   org Organization @relation(fields: [orgId], references: [id])
 
   @@index([orgId])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  orgId     String
+  recipient String
+  template  String // TRIAL_EXPIRING_SOON | TRIAL_EXPIRED | RENEWAL_UPCOMING | RENEWAL_LAPSED | PAYMENT_FAILED | PAYMENT_RECEIPT
+  subject   String
+  status    String // SENT | SKIPPED | FAILED
+  sentAt    DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+  @@index([template])
 }
 
 model ExchangeRate {

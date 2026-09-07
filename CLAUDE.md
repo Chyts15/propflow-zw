@@ -33,6 +33,11 @@
 ## SKILL: Africa-First Development
 - Mobile-first: median user is Android on Econet data
 - SMS over email for all alerts; every send checks smsOptIn inside lib/sms
+- Exception: billing-lifecycle notifications (trial/renewal warnings and lapses,
+  payment receipts/failures) go by EMAIL only, via lib/email/resend.ts +
+  lib/email/templates.ts — never SMS. A PAST_DUE org can have zero smsCredits,
+  and sendSms hard-fails with no credits left, so SMS is structurally
+  unreliable at exactly the moment billing needs to reach the landlord.
 - SMS opt-out: in-app toggle on Tenant Profile is the primary, authoritative mechanism —
   inbound STOP webhook is best-effort only (two-way SMS is unreliable in Zimbabwe)
 - Compress images (sharp / client-side before upload), lazy load everything

@@ -592,6 +592,23 @@ export async function activateOrgFromBillingEvent(
   }
 }
 
+// Billing-notification recipient: Organization.billingEmail if the landlord
+// has set one, else the org's creating LANDLORD user's email. User.email is
+// Clerk-managed and can go stale (the Clerk webhook only handles
+// user.created, not user.updated — see app/api/webhooks/clerk/route.ts) but
+// it's the best fallback we have.
+export async function getBillingRecipientsForOrg(orgId: string): Promise<string[]> {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { billingEmail: true } });
+  if (org?.billingEmail) return [org.billingEmail];
+
+  const landlord = await prisma.user.findFirst({
+    where: { orgId, role: "LANDLORD" },
+    orderBy: { createdAt: "asc" },
+    select: { email: true },
+  });
+  return landlord ? [landlord.email] : [];
+}
+
 // Daily cron: expired trials that never paid become PAST_DUE. Never deletes
 // data — read-only gating (landlordWriteProcedure) is what actually bites,
 // once 7 days past pastDueSince (spec: "PAST_DUE = read-only after 7-day grace").

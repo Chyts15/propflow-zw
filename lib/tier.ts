@@ -17,6 +17,16 @@ export const TIER_LABELS: Record<string, string> = {
   AGENCY: "Agency",
 };
 
+// Spec §5 — Starter $10 / Pro $25 / Agency $99 monthly; annual = 2 months
+// free (10x monthly, not 12x). Shared between billing.ts (initiating a
+// Paynow payment) and the renewal-warning/receipt emails, so the numbers
+// never drift apart.
+export const TIER_PRICES: Record<"STARTER" | "PRO" | "AGENCY", number> = {
+  STARTER: 10,
+  PRO: 25,
+  AGENCY: 99,
+};
+
 export function unitCapFor(tier: string): number | null {
   return TIER_UNIT_CAPS[tier] ?? null;
 }

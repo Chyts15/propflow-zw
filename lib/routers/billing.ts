@@ -10,10 +10,8 @@ import {
   finalizeBillingEvent,
 } from "@/lib/db/scoped";
 import { isPaynowConfigured, initiateSubscriptionPayment } from "@/lib/payments/paynow";
+import { TIER_PRICES } from "@/lib/tier";
 
-// Spec §5 — Starter $10 / Pro $25 / Agency $99 monthly; annual = 2 months
-// free (10x monthly, not 12x).
-const TIER_PRICES = { STARTER: 10, PRO: 25, AGENCY: 99 } as const;
 const SMS_BUNDLES = {
   "100": { qty: 100, priceUsd: 3 },
   "500": { qty: 500, priceUsd: 12 },
