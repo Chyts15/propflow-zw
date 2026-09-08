@@ -346,6 +346,75 @@ export async function getRentLedgerStats(orgId: string, periodMonth: number, per
   return { receivable, collected, outstanding, overdue30Plus };
 }
 
+// Creates one RentRecord per active Tenancy for the given period. Called two
+// ways: the monthly cron (app/api/cron/generate-rent) omits orgId to run
+// across every org; the landlord's manual "Generate for this period" button
+// (rent.generateForPeriod) passes ctx.orgId to scope it to their own org.
+//
+// Idempotent via the existing [unitId, periodMonth, periodYear] unique
+// constraint — createMany + skipDuplicates rather than a new guard, so
+// running this twice for the same period never duplicates records; it's a
+// no-op for tenancies that already have one.
+//
+// Two deliberate decisions, not silent defaults:
+//   - A tenancy that starts mid-period still gets a FULL month charged, not
+//     a prorated amount. RentRecord has no due-date/proration field, and
+//     RentStatus already has WAIVED/PARTIAL for a landlord to manually
+//     adjust a partial first month — building automatic proration would mean
+//     guessing a day-count convention nothing in the spec defines.
+//   - rentDueDay is already capped at 1-28 by the invite input's Zod schema
+//     (lib/routers/tenants.ts), so "due day past the end of the month" can't
+//     occur — and RentRecord doesn't store a due date at all, so this
+//     function doesn't need to compute one.
+//
+// A unit with only rentAmountZig set (no rentAmountUsd) is skipped, not
+// defaulted to $0 — RentRecord.amountDueUsd is non-nullable and every other
+// amount field in this schema (PaymentEvent, BillingEvent) treats USD as the
+// canonical currency; fabricating a USD figure via the exchange rate would
+// make the charge float with market rate rather than being the number the
+// landlord actually set.
+export async function generateRentRecordsForPeriod(periodMonth: number, periodYear: number, orgId?: string) {
+  const periodStart = new Date(periodYear, periodMonth - 1, 1);
+  const periodEnd = new Date(periodYear, periodMonth, 0);
+
+  const tenancies = await prisma.tenancy.findMany({
+    where: {
+      isActive: true,
+      startDate: { lte: periodEnd },
+      OR: [{ endDate: null }, { endDate: { gte: periodStart } }],
+      ...(orgId ? { unit: { property: { orgId } } } : {}),
+    },
+    select: {
+      unitId: true,
+      tenantId: true,
+      currency: true,
+      unit: { select: { rentAmountUsd: true, rentAmountZig: true } },
+    },
+  });
+
+  const eligible = tenancies.filter((t) => t.unit.rentAmountUsd != null);
+  const rows = eligible.map((t) => ({
+    unitId: t.unitId,
+    tenantId: t.tenantId,
+    periodMonth,
+    periodYear,
+    amountDueUsd: t.unit.rentAmountUsd!,
+    amountDueZig: t.unit.rentAmountZig,
+    currency: t.currency,
+  }));
+
+  if (rows.length === 0) {
+    return { created: 0, skipped: 0, ineligible: tenancies.length - eligible.length };
+  }
+
+  const result = await prisma.rentRecord.createMany({ data: rows, skipDuplicates: true });
+  return {
+    created: result.count,
+    skipped: rows.length - result.count,
+    ineligible: tenancies.length - eligible.length,
+  };
+}
+
 export async function getTenanciesForOrg(orgId: string, { cursor }: Cursor = {}) {
   const items = await prisma.tenancy.findMany({
     where: { unit: { property: { orgId } } },

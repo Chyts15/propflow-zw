@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/trial-expiry", "schedule": "0 6 * * *" },
     { "path": "/api/cron/renewal-lapse", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/billing-warnings", "schedule": "0 7 * * *" }
+    { "path": "/api/cron/billing-warnings", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/generate-rent", "schedule": "0 5 1 * *" }
   ]
 }

@@ -5,6 +5,7 @@ import { getRentRecordsForOrg, getRentLedgerStats } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { MonthSelector } from "@/components/landlord/month-selector";
 import { RentLedger } from "@/components/landlord/rent-ledger";
+import { GenerateRentButton } from "@/components/landlord/generate-rent-button";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
 export default async function FinancesPage({
@@ -77,8 +78,12 @@ export default async function FinancesPage({
             No rent records for this period
           </p>
           <p className="mt-1 text-sm" style={{ color: t.fgMuted }}>
-            Records are generated monthly for each active tenancy.
+            Records are generated automatically on the 1st of each month for every active tenancy —
+            or generate this period now instead of waiting.
           </p>
+          <div className="mt-4 flex justify-center">
+            <GenerateRentButton periodMonth={periodMonth} periodYear={periodYear} />
+          </div>
         </div>
       ) : (
         <RentLedger records={records} rate={rate} />

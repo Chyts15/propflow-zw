@@ -7,6 +7,7 @@ import {
   markRentRecordPaid,
   setManualExchangeRate,
   submitPaymentProofForTenant,
+  generateRentRecordsForPeriod,
 } from "@/lib/db/scoped";
 import { TRPCError } from "@trpc/server";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
@@ -36,6 +37,15 @@ export const rentRouter = router({
   setExchangeRate: landlordWriteProcedure
     .input(z.object({ usdToZig: z.number().positive() }))
     .mutation(({ ctx, input }) => setManualExchangeRate(ctx.orgId, input.usdToZig)),
+
+  // Manual counterpart to the monthly generate-rent cron — lets a landlord
+  // onboarding mid-month (or one who just missed the cron) generate the
+  // current/any period immediately rather than wait. Idempotent: re-running
+  // for a period that already has records just skips them (see
+  // generateRentRecordsForPeriod).
+  generateForPeriod: landlordWriteProcedure
+    .input(z.object({ periodMonth: z.number().int().min(1).max(12), periodYear: z.number().int() }))
+    .mutation(({ ctx, input }) => generateRentRecordsForPeriod(input.periodMonth, input.periodYear, ctx.orgId)),
 
   // Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
   markPaid: landlordWriteProcedure
