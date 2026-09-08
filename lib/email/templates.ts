@@ -15,19 +15,22 @@ function fmtUsd(amount: number) {
   return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD`;
 }
 
-// orgName traces back to a Clerk user's first/last name — untrusted input —
-// and lands directly in an HTML email body, so it gets escaped.
+// recipientName traces back to a Clerk user's first/last name (or an
+// Organization.name derived from one) — untrusted input — and lands
+// directly in an HTML email body, so it gets escaped.
 function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-function wrap(orgName: string, heading: string, body: string, ctaLabel = "Go to Billing", ctaHref = `${APP_URL}/settings/billing`) {
+// recipientName is the landlord's org name for billing mail, the tenant's
+// own name for rent reminders — whoever the email is addressed to.
+function wrap(recipientName: string, heading: string, body: string, ctaLabel = "Go to Billing", ctaHref = `${APP_URL}/settings/billing`) {
   return `
 <div style="font-family: Inter, Arial, sans-serif; max-width: 480px; margin: 0 auto; color: #1c1917;">
   <h1 style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; font-weight: 800; font-size: 20px; color: ${ACCENT}; margin: 0 0 16px;">
     ${heading}
   </h1>
-  <p style="font-size: 14px; line-height: 1.6; margin: 0 0 12px;">Hi ${escapeHtml(orgName)},</p>
+  <p style="font-size: 14px; line-height: 1.6; margin: 0 0 12px;">Hi ${escapeHtml(recipientName)},</p>
   <p style="font-size: 14px; line-height: 1.6; margin: 0 0 20px;">${body}</p>
   <a href="${ctaHref}" style="display: inline-block; background: ${ACCENT}; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 12px; font-size: 14px; font-weight: 600;">
     ${ctaLabel}
@@ -94,6 +97,43 @@ export const EMAIL_TEMPLATES = {
       "Payment received",
       `We've received your payment of <strong>${fmtUsd(amountUsd)}</strong> for the ${tier} plan. Your subscription is now active until <strong>${fmtDate(periodEnd)}</strong>.<br/><br/>Reference: <span style="font-family: 'JetBrains Mono', monospace;">${reference}</span>`,
       "View billing history",
+    ),
+  }),
+
+  // Tenant-facing rent reminders — mirror SMS_TEMPLATES' three variants
+  // (lib/sms/africas-talking.ts) exactly, one-for-one. CTA goes to /rent,
+  // not /settings/billing — a tenant has no access to the landlord's
+  // billing page.
+  RENT_REMINDER_BEFORE: (tenantName: string, unitNumber: string, propertyName: string, amountUsd: number, dueDate: Date) => ({
+    subject: `Rent due ${fmtDate(dueDate)} — Unit ${unitNumber}`,
+    html: wrap(
+      tenantName,
+      "Rent due in 3 days",
+      `Rent of <strong>${fmtUsd(amountUsd)}</strong> for Unit ${escapeHtml(unitNumber)}, ${escapeHtml(propertyName)} is due on <strong>${fmtDate(dueDate)}</strong>. Pay your landlord as usual (EcoCash, bank, or cash), then upload your proof in the app.`,
+      "Upload proof",
+      `${APP_URL}/rent`,
+    ),
+  }),
+
+  RENT_REMINDER_DUE: (tenantName: string, unitNumber: string, amountUsd: number) => ({
+    subject: `Rent due today — Unit ${unitNumber}`,
+    html: wrap(
+      tenantName,
+      "Rent is due today",
+      `Rent of <strong>${fmtUsd(amountUsd)}</strong> for Unit ${escapeHtml(unitNumber)} is due today. Pay your landlord as usual, then upload your proof in the app.`,
+      "Upload proof",
+      `${APP_URL}/rent`,
+    ),
+  }),
+
+  RENT_REMINDER_OVERDUE: (tenantName: string, unitNumber: string, amountUsd: number, dueDate: Date) => ({
+    subject: `Rent overdue — Unit ${unitNumber}`,
+    html: wrap(
+      tenantName,
+      "Rent payment overdue",
+      `Rent of <strong>${fmtUsd(amountUsd)}</strong> for Unit ${escapeHtml(unitNumber)} was due on <strong>${fmtDate(dueDate)}</strong>. Please pay and upload proof, or contact your landlord if you've already paid.`,
+      "Upload proof",
+      `${APP_URL}/rent`,
     ),
   }),
 } as const;

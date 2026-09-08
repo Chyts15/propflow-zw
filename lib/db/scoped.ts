@@ -415,6 +415,68 @@ export async function generateRentRecordsForPeriod(periodMonth: number, periodYe
   };
 }
 
+// System-wide (no orgId — cron-only, like expireOverdueTrials): every unpaid
+// RentRecord across every org, joined with what the rent-reminder cron needs
+// to compute a due date and reach the tenant.
+//
+// RentRecord has no direct Prisma relation to Tenancy or User (same
+// denormalized tenantId/unitId pattern as Complaint — see
+// getComplaintsForOrg's comment), so both are batch-fetched and joined in JS
+// rather than via `include`.
+//
+// The due date isn't stored anywhere — it's derived from
+// (periodMonth/periodYear, Tenancy.rentDueDay). This is reliably computable
+// for every record here: rentDueDay is capped 1-28 at invite time (lib/routers/
+// tenants.ts), so it always exists in every month including February, and
+// Tenancy.unitId is unique — a unit has at most one Tenancy, ever — so a
+// RentRecord (which generateRentRecordsForPeriod only ever creates from an
+// active Tenancy) will always have exactly one Tenancy to look up, as long as
+// that Tenancy row hasn't been deleted (nothing in this app deletes one).
+// A record whose Tenancy or tenant User is missing is skipped defensively
+// rather than crashing the whole sweep — this shouldn't happen given the
+// above, but a reminder silently not sent is a far smaller problem than the
+// cron throwing for every org because of one bad row.
+export async function getUnpaidRentRecordsForReminders() {
+  const records = await prisma.rentRecord.findMany({
+    where: { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+    select: {
+      unitId: true,
+      tenantId: true,
+      periodMonth: true,
+      periodYear: true,
+      amountDueUsd: true,
+      unit: { select: { unitNumber: true, property: { select: { orgId: true, name: true } } } },
+    },
+  });
+  if (records.length === 0) return [];
+
+  const unitIds = [...new Set(records.map((r) => r.unitId))];
+  const tenantIds = [...new Set(records.map((r) => r.tenantId))];
+  const [tenancies, tenants] = await Promise.all([
+    prisma.tenancy.findMany({ where: { unitId: { in: unitIds } }, select: { unitId: true, rentDueDay: true } }),
+    prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true, email: true } }),
+  ]);
+  const rentDueDayByUnit = new Map(tenancies.map((t) => [t.unitId, t.rentDueDay]));
+  const tenantById = new Map(tenants.map((t) => [t.id, t]));
+
+  return records
+    .map((r) => {
+      const rentDueDay = rentDueDayByUnit.get(r.unitId);
+      const tenant = tenantById.get(r.tenantId);
+      if (rentDueDay == null || !tenant) return null;
+      return {
+        orgId: r.unit.property.orgId,
+        unitNumber: r.unit.unitNumber,
+        propertyName: r.unit.property.name,
+        tenantName: tenant.name,
+        tenantEmail: tenant.email,
+        amountDueUsd: r.amountDueUsd,
+        dueDate: new Date(r.periodYear, r.periodMonth - 1, rentDueDay),
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
 export async function getTenanciesForOrg(orgId: string, { cursor }: Cursor = {}) {
   const items = await prisma.tenancy.findMany({
     where: { unit: { property: { orgId } } },

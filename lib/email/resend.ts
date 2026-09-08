@@ -72,18 +72,22 @@ export async function sendTransactionalEmail(args: {
   }
 }
 
-type EmailTemplate =
+export type EmailTemplate =
   | "TRIAL_EXPIRING_SOON"
   | "TRIAL_EXPIRED"
   | "RENEWAL_UPCOMING"
   | "RENEWAL_LAPSED"
   | "PAYMENT_FAILED"
-  | "PAYMENT_RECEIPT";
+  | "PAYMENT_RECEIPT"
+  | "RENT_REMINDER_BEFORE"
+  | "RENT_REMINDER_DUE"
+  | "RENT_REMINDER_OVERDUE";
 
 /**
- * Sends one billing-notification email and logs it to EmailLog, mirroring
- * sendSms's logAndReturn pattern. Use this (not sendTransactionalEmail
- * directly) for anything billing-related so it stays queryable.
+ * Sends one transactional email (billing notice or rent reminder) and logs
+ * it to EmailLog, mirroring sendSms's logAndReturn pattern. Use this (not
+ * sendTransactionalEmail directly) for anything that should stay queryable —
+ * the name predates rent reminders, which reuse it unchanged.
  */
 export async function sendBillingEmail(args: {
   orgId: string;
@@ -179,4 +183,25 @@ export async function sendBillingEmailBatch(
       status: totalFailure || failedIndices.has(i) ? ("FAILED" as const) : ("SENT" as const),
     })),
   });
+}
+
+/**
+ * Idempotency guard for the rent-reminder cron (app/api/cron/rent-reminders):
+ * has this exact (recipient, template) pair already been logged today? No
+ * new schema field — EmailLog's existing (orgId, recipient, template, sentAt)
+ * columns are enough, because a tenant has at most one Tenancy (both
+ * Tenancy.unitId and .tenantId are `@unique`) with a fixed rentDueDay, so two
+ * different RentRecords for the same tenant can never legitimately want the
+ * same reminder template on the same calendar day — their due dates are
+ * always ~a month apart. This breaks if that invariant ever changes (e.g.
+ * multiple tenancies per tenant, or a mid-lease rentDueDay change).
+ */
+export async function wasEmailSentToday(orgId: string, recipient: string, template: EmailTemplate): Promise<boolean> {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const existing = await prisma.emailLog.findFirst({
+    where: { orgId, recipient, template, sentAt: { gte: startOfToday } },
+    select: { id: true },
+  });
+  return existing !== null;
 }
