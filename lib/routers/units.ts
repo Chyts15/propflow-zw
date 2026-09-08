@@ -16,7 +16,15 @@ const unitInput = z.object({
   unitNumber: z.string().min(1).max(20),
   bedrooms: z.number().int().min(0).max(20).default(1),
   bathrooms: z.number().int().min(0).max(20).default(1),
-  rentAmountUsd: z.number().min(0).optional(),
+  // Required (not just present-but-nullable): every amount field in this
+  // schema (RentRecord.amountDueUsd, PaymentEvent, BillingEvent) treats USD
+  // as canonical, and rent-record generation (generateRentRecordsForPeriod,
+  // lib/db/scoped.ts) silently skips a unit with no rentAmountUsd rather
+  // than fabricate a figure via the exchange rate — so a unit created
+  // without one would never get a rent record and look broken. .partial()
+  // below keeps this optional again for update, where leaving it out just
+  // means "don't change it."
+  rentAmountUsd: z.number().positive(),
   rentAmountZig: z.number().min(0).optional(),
   depositAmount: z.number().min(0).optional(),
   description: z.string().max(1000).optional(),

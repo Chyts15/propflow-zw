@@ -14,6 +14,14 @@ const PLANS: { tier: Tier; label: string; unitsLabel: string; monthlyUsd: number
   { tier: "AGENCY", label: "Agency", unitsLabel: "Unlimited", monthlyUsd: 99 },
 ];
 
+// SMS isn't wired to any sending feature yet (rent reminders, complaint
+// updates, payment-proof alerts are all unbuilt — see README § Known gaps),
+// so nothing ever spends a purchased credit. Hide the purchase path rather
+// than let a landlord pay for something that does nothing; flip this back to
+// true once SMS ships. Backend (billing.initiate's SMS_BUNDLE handling) is
+// untouched — only this UI entry point is gated.
+const SMS_BUNDLES_ENABLED = false;
+
 const SMS_BUNDLES = [
   { bundle: "100" as const, qty: 100, priceUsd: 3 },
   { bundle: "500" as const, qty: 500, priceUsd: 12 },
@@ -192,34 +200,38 @@ export function BillingPanel({
         })}
       </div>
 
-      <h2 className="mt-6 font-heading text-base font-extrabold" style={{ color: t.fg }}>
-        SMS bundles
-      </h2>
-      <p className="mt-1 text-xs" style={{ color: t.fgMuted }}>
-        {org.smsCredits} credits remaining
-      </p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {SMS_BUNDLES.map((b) => (
-          <div key={b.bundle} className="rounded-2xl p-4 text-center" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
-            <MessageSquareText className="mx-auto h-5 w-5" style={{ color: t.accentLight }} />
-            <p className="mt-2 text-sm font-semibold" style={{ color: t.fg }}>
-              {b.qty} SMS
-            </p>
-            <p className="text-xs" style={{ color: t.fgMuted }}>
-              ${b.priceUsd}
-            </p>
-            <button
-              type="button"
-              disabled={initiate.isPending}
-              onClick={() => initiate.mutate({ kind: "SMS_BUNDLE", bundle: b.bundle })}
-              className="mt-3 w-full rounded-lg py-2 font-mono text-xs font-medium disabled:opacity-60"
-              style={{ backgroundColor: "rgba(255,255,255,0.06)", color: t.fg, border: `1px solid ${t.cardBorder}` }}
-            >
-              Buy via Paynow
-            </button>
+      {SMS_BUNDLES_ENABLED && (
+        <>
+          <h2 className="mt-6 font-heading text-base font-extrabold" style={{ color: t.fg }}>
+            SMS bundles
+          </h2>
+          <p className="mt-1 text-xs" style={{ color: t.fgMuted }}>
+            {org.smsCredits} credits remaining
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {SMS_BUNDLES.map((b) => (
+              <div key={b.bundle} className="rounded-2xl p-4 text-center" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
+                <MessageSquareText className="mx-auto h-5 w-5" style={{ color: t.accentLight }} />
+                <p className="mt-2 text-sm font-semibold" style={{ color: t.fg }}>
+                  {b.qty} SMS
+                </p>
+                <p className="text-xs" style={{ color: t.fgMuted }}>
+                  ${b.priceUsd}
+                </p>
+                <button
+                  type="button"
+                  disabled={initiate.isPending}
+                  onClick={() => initiate.mutate({ kind: "SMS_BUNDLE", bundle: b.bundle })}
+                  className="mt-3 w-full rounded-lg py-2 font-mono text-xs font-medium disabled:opacity-60"
+                  style={{ backgroundColor: "rgba(255,255,255,0.06)", color: t.fg, border: `1px solid ${t.cardBorder}` }}
+                >
+                  Buy via Paynow
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
       <h2 className="mt-6 font-heading text-base font-extrabold" style={{ color: t.fg }}>
         Billing history

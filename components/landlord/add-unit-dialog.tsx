@@ -63,7 +63,7 @@ export function AddUnitDialog({
       unitNumber: String(form.get("unitNumber")),
       bedrooms: Number(form.get("bedrooms")),
       bathrooms: Number(form.get("bathrooms")),
-      rentAmountUsd: form.get("rentAmountUsd") ? Number(form.get("rentAmountUsd")) : undefined,
+      rentAmountUsd: Number(form.get("rentAmountUsd")),
       depositAmount: form.get("depositAmount") ? Number(form.get("depositAmount")) : undefined,
     });
   }
@@ -102,7 +102,7 @@ export function AddUnitDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="rentAmountUsd">Rent (USD)</Label>
-              <Input id="rentAmountUsd" name="rentAmountUsd" type="number" min={0} step="0.01" placeholder="250" />
+              <Input id="rentAmountUsd" name="rentAmountUsd" type="number" min={0.01} step="0.01" required placeholder="250" />
             </div>
             <div>
               <Label htmlFor="depositAmount">Deposit (USD)</Label>

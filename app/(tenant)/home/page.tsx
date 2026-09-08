@@ -67,15 +67,13 @@ export default async function TenantHomePage() {
             <p className="font-mono text-xs tracking-wide" style={{ color: t.fgMuted }}>
               {monthLabel} RENT
             </p>
-            <button
-              type="button"
-              disabled
-              title="Payment proof upload — Step 8"
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[11px] font-medium opacity-40"
+            <Link
+              href="/rent"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[11px] font-medium"
               style={{ border: `1px solid ${t.cardBorder}`, color: t.fg }}
             >
               <Upload className="h-3 w-3" /> UPLOAD PROOF
-            </button>
+            </Link>
           </div>
           <span
             className="mt-2 inline-block rounded-full px-2.5 py-1 text-[11px] font-medium"

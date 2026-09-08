@@ -180,9 +180,9 @@ export default async function DashboardPage() {
             <h2 className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
               Rent status
             </h2>
-            <span className="font-mono text-xs" style={{ color: t.fgMuted }}>
+            <Link href="/finances" className="font-mono text-xs" style={{ color: t.fgMuted }}>
               VIEW LEDGER →
-            </span>
+            </Link>
           </div>
           <div className="mt-3 rounded-2xl" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
             {rentRecords.items.length === 0 && (

@@ -42,7 +42,6 @@ export function ComplaintThread({ complaint }: { complaint: Complaint }) {
   const t = LANDLORD_DARK;
   const router = useRouter();
   const [reply, setReply] = useState("");
-  const [notifySms, setNotifySms] = useState(true);
 
   const updateStatus = trpc.complaints.updateStatus.useMutation({
     onSuccess: () => {
@@ -202,10 +201,6 @@ export function ComplaintThread({ complaint }: { complaint: Complaint }) {
             <Send className="h-4 w-4" />
           </button>
         </div>
-        <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: t.fgMuted }}>
-          <input type="checkbox" checked={notifySms} onChange={(e) => setNotifySms(e.target.checked)} disabled title="SMS — Step 7" />
-          Also notify via SMS
-        </label>
       </div>
     </div>
   );

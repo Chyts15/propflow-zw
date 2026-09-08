@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle } from "lucide-react";
 import { LANDLORD_DARK, PAYMENT_BADGE, RENT_STATUS_BADGE } from "@/components/landlord/theme";
 import { MarkPaidDialog } from "@/components/landlord/mark-paid-dialog";
 import { ProofBadge } from "@/components/landlord/proof-lightbox";
@@ -138,17 +137,6 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
                         >
                           MARK PAID
                         </button>
-                        {r.status === "OVERDUE" && (
-                          <button
-                            type="button"
-                            disabled
-                            title="SMS reminders — Step 7"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg opacity-40"
-                            style={{ border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                          </button>
-                        )}
                       </div>
                     )}
                   </td>
@@ -209,17 +197,6 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
                   >
                     MARK PAID
                   </button>
-                  {r.status === "OVERDUE" && (
-                    <button
-                      type="button"
-                      disabled
-                      title="SMS reminders — Step 7"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg opacity-40"
-                      style={{ border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </button>
-                  )}
                 </div>
               )}
             </div>
