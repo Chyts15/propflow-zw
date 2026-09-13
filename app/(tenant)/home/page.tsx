@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { Bell, MapPin, Upload, Plus } from "lucide-react";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getTenancyForTenant, getRentHistoryForTenant, getComplaintsForTenant } from "@/lib/db/scoped";
 import { TENANT_DARK, COMPLAINT_STATUS_TONE } from "@/components/tenant/theme";
 import { formatRelativeTime } from "@/lib/utils";
@@ -16,7 +16,7 @@ const RENT_STATUS_BADGE: Record<string, { bg: string; fg: string }> = {
 
 export default async function TenantHomePage() {
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! } });
+  const user = await getOrCreateDbUser(userId!);
 
   const [tenancy, { items: rentHistory }, { items: complaints }] = await Promise.all([
     getTenancyForTenant(user.id),

@@ -1,6 +1,6 @@
 import { Bell } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getRentHistoryForTenant } from "@/lib/db/scoped";
 import { PaymentProofUpload } from "@/components/tenant/payment-proof-upload";
 import { PaymentHistory } from "@/components/tenant/payment-history";
@@ -16,7 +16,7 @@ const RENT_STATUS_BADGE: Record<string, { bg: string; fg: string }> = {
 
 export default async function TenantRentPage() {
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! }, select: { id: true } });
+  const user = await getOrCreateDbUser(userId!);
   const { items: history } = await getRentHistoryForTenant(user.id);
   const t = TENANT_DARK;
 

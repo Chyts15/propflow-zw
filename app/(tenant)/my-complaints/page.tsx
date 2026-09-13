@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { Plus } from "lucide-react";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getComplaintsForTenant } from "@/lib/db/scoped";
 import { TENANT_DARK, COMPLAINT_STATUS_TONE } from "@/components/tenant/theme";
 import { formatRelativeTime } from "@/lib/utils";
@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default async function TenantComplaintsPage() {
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! }, select: { id: true } });
+  const user = await getOrCreateDbUser(userId!);
   const { items: complaints } = await getComplaintsForTenant(user.id);
   const t = TENANT_DARK;
 

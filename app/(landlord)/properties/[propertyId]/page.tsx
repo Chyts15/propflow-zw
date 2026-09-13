@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getPropertyForOrg, getOrganization, getUnitCountForOrg } from "@/lib/db/scoped";
 import { AddUnitDialog } from "@/components/landlord/add-unit-dialog";
 import { CurrencyDisplay } from "@/components/landlord/currency-display";
@@ -15,7 +15,7 @@ export default async function PropertyDetailPage({
 }) {
   const { propertyId } = await params;
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! }, select: { orgId: true } });
+  const user = await getOrCreateDbUser(userId!);
   const t = LANDLORD_DARK;
 
   let property;

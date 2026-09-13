@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { AlertTriangle, Bell, MessageSquareWarning } from "lucide-react";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getDashboardStats, getComplaintsForOrg, getRentRecordsForOrg } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { CollectionsStat } from "@/components/landlord/collections-stat";
@@ -16,10 +16,7 @@ function compactUsd(amount: number) {
 
 export default async function DashboardPage() {
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { clerkId: userId! },
-    select: { name: true, orgId: true },
-  });
+  const user = await getOrCreateDbUser(userId!);
   const orgId = user.orgId!;
   const t = LANDLORD_DARK;
 

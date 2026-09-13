@@ -1,6 +1,6 @@
 import { Bell } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getRentRecordsForOrg, getRentLedgerStats } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { MonthSelector } from "@/components/landlord/month-selector";
@@ -15,7 +15,7 @@ export default async function FinancesPage({
 }) {
   const { month } = await searchParams;
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! }, select: { orgId: true } });
+  const user = await getOrCreateDbUser(userId!);
   const orgId = user.orgId!;
   const t = LANDLORD_DARK;
 

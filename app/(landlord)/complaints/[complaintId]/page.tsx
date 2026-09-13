@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
-import { prisma } from "@/lib/db";
+import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getComplaintForOrg } from "@/lib/db/scoped";
 import { ComplaintThread } from "@/components/landlord/complaint-thread";
 
@@ -12,7 +12,7 @@ export default async function ComplaintDetailPage({
 }) {
   const { complaintId } = await params;
   const { userId } = await auth();
-  const user = await prisma.user.findUniqueOrThrow({ where: { clerkId: userId! }, select: { orgId: true } });
+  const user = await getOrCreateDbUser(userId!);
 
   let complaint;
   try {
