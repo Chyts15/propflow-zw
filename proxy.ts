@@ -35,5 +35,10 @@ export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|json|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    // Clerk's own same-origin script proxy (auto-enabled for production keys
+    // without a custom Clerk domain — see @clerk/nextjs clerkMiddleware).
+    // Requests here end in .js, which the pattern above deliberately excludes,
+    // so without this entry clerk-js 404s and the app never loads Clerk.
+    "/__clerk(.*)",
   ],
 };
