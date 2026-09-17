@@ -290,7 +290,15 @@ export function PortalLanding() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    // h-screen (not min-h-screen): the nested flex-1/h-full chain below
+    // (desktop wrapper -> hero row -> panel buttons) needs a genuinely
+    // definite ancestor height to stretch against. A min-height alone lets
+    // Chrome size this element from its own content first and only clamp it
+    // up afterward, so percentage/stretch sizing several flex levels down
+    // resolves against that pre-clamp (content) height instead of the real
+    // viewport height — the panels end up hugging their content instead of
+    // filling the screen, leaving a blank gap above the footer.
+    <div className="flex h-screen w-full flex-col">
       <button
         type="button"
         onClick={() => setTheme((th) => (th === "dark" ? "light" : "dark"))}
