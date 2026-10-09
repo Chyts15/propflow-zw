@@ -26,7 +26,10 @@ export default async function LandlordLayout({ children }: { children: React.Rea
   ]);
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: LANDLORD_DARK.mainBg }}>
+    // color is set here, not per element: the global body foreground is the
+    // light-theme dark brown, so any text in this dark shell that doesn't set its
+    // own color (e.g. CurrencyDisplay) would otherwise render dark-on-dark.
+    <div className="flex min-h-screen" style={{ backgroundColor: LANDLORD_DARK.mainBg, color: LANDLORD_DARK.fg }}>
       <LandlordSidebar
         orgName={organization.name}
         userName={user.name}

@@ -6,6 +6,7 @@ import type {
   PropertyType,
   ComplaintStatus,
   ComplaintPriority,
+  RentStatus,
   UserRole,
   SubscriptionTier,
   Prisma,
@@ -158,9 +159,12 @@ export async function deleteUnitForOrg(orgId: string, unitId: string) {
   if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
 }
 
-export async function getComplaintsForOrg(orgId: string, { cursor }: Cursor = {}) {
+export async function getComplaintsForOrg(
+  orgId: string,
+  { cursor, statuses }: Cursor & { statuses?: ComplaintStatus[] } = {},
+) {
   const items = await prisma.complaint.findMany({
-    where: { unit: { property: { orgId } } },
+    where: { unit: { property: { orgId } }, ...(statuses ? { status: { in: statuses } } : {}) },
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
@@ -276,6 +280,57 @@ export async function getRentRecordsForOrg(
   const withTenantName = items.map((r) => ({ ...r, tenantName: nameById.get(r.tenantId) ?? "Unknown tenant" }));
 
   return paginate(withTenantName);
+}
+
+// Landlord-dashboard "Rent status" panel: the current period's records, most
+// urgent first (overdue, then partial, then pending, then paid, then waived)
+// so the rows a landlord has to act on are never pushed out by paid ones.
+// Status enum order can't express that, so this sorts in memory. A period holds
+// at most one record per unit (@@unique unitId+period) and getDashboardStats
+// already reads the same set for its totals, so this is bounded by unit count;
+// only `limit` rows are returned.
+const RENT_URGENCY: Record<RentStatus, number> = { OVERDUE: 0, PARTIAL: 1, PENDING: 2, PAID: 3, WAIVED: 4 };
+
+export async function getRentStatusPreviewForOrg(orgId: string, limit = 5) {
+  const now = new Date();
+  const records = await prisma.rentRecord.findMany({
+    where: {
+      unit: { property: { orgId } },
+      periodMonth: now.getMonth() + 1,
+      periodYear: now.getFullYear(),
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      amountDueUsd: true,
+      amountPaidUsd: true,
+      status: true,
+      paymentMethod: true,
+      proofImageUrl: true,
+      unit: { select: { unitNumber: true } },
+    },
+  });
+
+  const rows = records
+    .sort((a, b) => {
+      const proofA = a.proofImageUrl && a.status !== "PAID" ? 0 : 1;
+      const proofB = b.proofImageUrl && b.status !== "PAID" ? 0 : 1;
+      return (
+        RENT_URGENCY[a.status] - RENT_URGENCY[b.status] ||
+        proofA - proofB ||
+        b.amountDueUsd - a.amountDueUsd ||
+        a.unit.unitNumber.localeCompare(b.unit.unitNumber, undefined, { numeric: true })
+      );
+    })
+    .slice(0, limit);
+
+  // RentRecord.tenantId has no Prisma relation — same batched-lookup pattern
+  // as getRentRecordsForOrg, but only for the rows actually returned.
+  const tenantIds = [...new Set(rows.map((r) => r.tenantId))];
+  const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
+  const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+
+  return rows.map(({ tenantId, ...r }) => ({ ...r, tenantName: nameById.get(tenantId) ?? "Unknown tenant" }));
 }
 
 export async function getRentRecordForOrg(orgId: string, rentRecordId: string) {
@@ -559,7 +614,7 @@ export async function getDashboardStats(orgId: string) {
     prisma.unit.findMany({ where: { property: { orgId } }, select: { isVacant: true } }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth, periodYear },
-      select: { status: true, amountDueUsd: true, amountPaidUsd: true },
+      select: { status: true, amountDueUsd: true, amountPaidUsd: true, proofImageUrl: true },
     }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth: lastPeriodMonth, periodYear: lastPeriodYear },
@@ -582,6 +637,12 @@ export async function getDashboardStats(orgId: string) {
   const onTimeCollectionsTrend =
     lastMonthRentRecords.length === 0 ? null : onTimeCollectionsPct - pctPaid(lastMonthRentRecords);
 
+  // What is still owed on overdue records, and how many tenant proofs are
+  // waiting on the landlord. Both come from the records already loaded above.
+  const overdue = rentRecords.filter((r) => r.status === "OVERDUE");
+  const overdueUsd = overdue.reduce((sum, r) => sum + Math.max(r.amountDueUsd - r.amountPaidUsd, 0), 0);
+  const proofsToReview = rentRecords.filter((r) => r.proofImageUrl && r.status !== "PAID").length;
+
   return {
     orgName: org.name,
     smsCredits: org.smsCredits,
@@ -589,6 +650,10 @@ export async function getDashboardStats(orgId: string) {
     occupiedUnits,
     dueUsd,
     collectedUsd,
+    rentRecordCount: rentRecords.length,
+    overdueCount: overdue.length,
+    overdueUsd,
+    proofsToReview,
     onTimeCollectionsPct,
     onTimeCollectionsTrend,
     openComplaints,

@@ -1,3 +1,5 @@
+import { LANDLORD_DARK } from "@/components/landlord/theme";
+
 // Zimbabwe locale: always show USD alongside ZiG when both are known.
 // "$1,200 USD" and "ZiG 15,000" — never USD-only when a ZiG figure exists.
 
@@ -13,7 +15,7 @@ export function CurrencyDisplay({ usd, zig }: { usd: number; zig?: number | null
   return (
     <span className="font-mono">
       {formatUsd(usd)}
-      {zig != null && <span style={{ color: "rgba(255,255,255,0.4)" }}> · {formatZig(zig)}</span>}
+      {zig != null && <span style={{ color: LANDLORD_DARK.fgMuted }}> · {formatZig(zig)}</span>}
     </span>
   );
 }

@@ -30,10 +30,45 @@ export const PAYMENT_BADGE: Record<string, { bg: string; fg: string }> = {
   CASH_ZIG: { bg: "rgba(255,255,255,0.12)", fg: "#e5e5e5" },
 };
 
+// PENDING is amber, not neutral: it is the state a landlord has to act on, and
+// the approved comps draw it amber. Neutral is reserved for WAIVED.
 export const RENT_STATUS_BADGE: Record<string, { bg: string; fg: string }> = {
   PAID: { bg: "rgba(74,222,128,0.15)", fg: "#4ade80" },
   PARTIAL: { bg: "rgba(251,191,36,0.15)", fg: "#fbbf24" },
-  PENDING: { bg: "rgba(255,255,255,0.1)", fg: "rgba(255,255,255,0.6)" },
+  PENDING: { bg: "rgba(251,191,36,0.15)", fg: "#fbbf24" },
   OVERDUE: { bg: "rgba(248,113,113,0.15)", fg: "#f87171" },
   WAIVED: { bg: "rgba(255,255,255,0.1)", fg: "rgba(255,255,255,0.6)" },
+};
+
+// Human labels for the DB enums, so the UI never prints "ECOCASH" or "PENDING".
+export const PAYMENT_LABEL: Record<string, string> = {
+  ECOCASH: "EcoCash",
+  ONEMONEY: "OneMoney",
+  INNBUCKS: "InnBucks",
+  BANK_TRANSFER: "Bank transfer",
+  CASH_USD: "Cash (USD)",
+  CASH_ZIG: "Cash (ZiG)",
+};
+
+export const RENT_STATUS_LABEL: Record<string, string> = {
+  PAID: "Paid",
+  PARTIAL: "Partial",
+  PENDING: "Pending",
+  OVERDUE: "Overdue",
+  WAIVED: "Waived",
+};
+
+export const COMPLAINT_STATUS_LABEL: Record<string, string> = {
+  OPEN: "Open",
+  IN_PROGRESS: "In progress",
+  PENDING_PARTS: "Pending parts",
+  RESOLVED: "Resolved",
+  CLOSED: "Closed",
+};
+
+export const PRIORITY_LABEL: Record<string, string> = {
+  CRITICAL: "Critical",
+  HIGH: "High",
+  MEDIUM: "Medium",
+  LOW: "Low",
 };
