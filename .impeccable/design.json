@@ -1,0 +1,768 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T05:47:16.113Z",
+  "title": "Design System: PropFlow Zimbabwe",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Msasa Terracotta",
+        "canonical": "#c8522a",
+        "tonalRamp": [
+          "#1e0100",
+          "#460f00",
+          "#752100",
+          "#a83400",
+          "#cf5831",
+          "#f77d55",
+          "#feb59d",
+          "#fee9e3"
+        ]
+      },
+      "primary-light": {
+        "role": "primary",
+        "displayName": "Msasa Glow",
+        "canonical": "#e8835c",
+        "tonalRamp": [
+          "#1d0200",
+          "#441200",
+          "#722600",
+          "#9e4016",
+          "#c4633c",
+          "#eb865f",
+          "#feb59a",
+          "#fee9e2"
+        ]
+      },
+      "primary-deep": {
+        "role": "primary",
+        "displayName": "Burnt Msasa",
+        "canonical": "#9a3a1a",
+        "tonalRamp": [
+          "#1e0100",
+          "#470e00",
+          "#752100",
+          "#9f3e1f",
+          "#c56142",
+          "#ec8464",
+          "#feb59e",
+          "#fee9e3"
+        ]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Victoria Falls Teal",
+        "canonical": "#0e7c6b",
+        "tonalRamp": [
+          "#000f0b",
+          "#002d25",
+          "#004e42",
+          "#047161",
+          "#349583",
+          "#5cb8a5",
+          "#81ddc9",
+          "#baffef"
+        ]
+      },
+      "secondary-light": {
+        "role": "secondary",
+        "displayName": "Falls Mist",
+        "canonical": "#1aaf97",
+        "tonalRamp": [
+          "#000f0b",
+          "#002d25",
+          "#004e42",
+          "#027261",
+          "#0a9782",
+          "#34bda5",
+          "#62e3c9",
+          "#bcffee"
+        ]
+      },
+      "secondary-deep": {
+        "role": "secondary",
+        "displayName": "Deep Falls",
+        "canonical": "#085548",
+        "tonalRamp": [
+          "#000f0b",
+          "#002d25",
+          "#014e41",
+          "#2b6f61",
+          "#4f9182",
+          "#72b4a4",
+          "#96d9c8",
+          "#bbffee"
+        ]
+      },
+      "gold": {
+        "role": "tertiary",
+        "displayName": "Savanna Gold",
+        "canonical": "#d4a017",
+        "tonalRamp": [
+          "#120900",
+          "#322200",
+          "#553e00",
+          "#7c5b02",
+          "#a57b01",
+          "#d09c0b",
+          "#f6c047",
+          "#feecc9"
+        ]
+      },
+      "gold-light": {
+        "role": "tertiary",
+        "displayName": "Gold Light",
+        "canonical": "#ecc94b",
+        "tonalRamp": [
+          "#100a00",
+          "#2e2400",
+          "#504000",
+          "#755f03",
+          "#9c8002",
+          "#c4a20c",
+          "#e9c648",
+          "#ffeeb8"
+        ]
+      },
+      "night-earth": {
+        "role": "neutral",
+        "displayName": "Night Earth",
+        "canonical": "#0e0704",
+        "tonalRamp": [
+          "#110906",
+          "#2c231e",
+          "#49403a",
+          "#695f59",
+          "#8b807a",
+          "#aea29c",
+          "#d2c6c0",
+          "#f8ece5"
+        ]
+      },
+      "hearth": {
+        "role": "neutral",
+        "displayName": "Hearth",
+        "canonical": "#150b07",
+        "tonalRamp": [
+          "#120805",
+          "#2e221d",
+          "#4b3f3a",
+          "#6b5e58",
+          "#8d7f79",
+          "#b0a19b",
+          "#d5c5bf",
+          "#fbebe4"
+        ]
+      },
+      "ember-card": {
+        "role": "neutral",
+        "displayName": "Ember Card",
+        "canonical": "#1f130d",
+        "tonalRamp": [
+          "#130804",
+          "#2f221b",
+          "#4d3e38",
+          "#6d5e56",
+          "#8f7e77",
+          "#b2a199",
+          "#d7c5bd",
+          "#fceae2"
+        ]
+      },
+      "ember-line": {
+        "role": "neutral",
+        "displayName": "Ember Line",
+        "canonical": "#3a2216",
+        "tonalRamp": [
+          "#190500",
+          "#361e12",
+          "#553b2e",
+          "#765a4d",
+          "#997b6d",
+          "#bc9e8f",
+          "#e2c1b2",
+          "#ffeae0"
+        ]
+      },
+      "forest-night": {
+        "role": "neutral",
+        "displayName": "Forest Night",
+        "canonical": "#04140f",
+        "tonalRamp": [
+          "#010f0a",
+          "#182924",
+          "#344740",
+          "#53665f",
+          "#738880",
+          "#96aba3",
+          "#b9cfc7",
+          "#def4ec"
+        ]
+      },
+      "forest-hearth": {
+        "role": "neutral",
+        "displayName": "Forest Hearth",
+        "canonical": "#062018",
+        "tonalRamp": [
+          "#001009",
+          "#112b22",
+          "#2e483f",
+          "#4d685e",
+          "#6e8a7f",
+          "#90ada1",
+          "#b3d1c5",
+          "#d8f7eb"
+        ]
+      },
+      "forest-card": {
+        "role": "neutral",
+        "displayName": "Forest Card",
+        "canonical": "#0e2a20",
+        "tonalRamp": [
+          "#001008",
+          "#0f2b21",
+          "#2d493e",
+          "#4c695d",
+          "#6c8a7d",
+          "#8eada0",
+          "#b2d2c4",
+          "#d7f7e9"
+        ]
+      },
+      "forest-line": {
+        "role": "neutral",
+        "displayName": "Forest Line",
+        "canonical": "#1a3d30",
+        "tonalRamp": [
+          "#001008",
+          "#072c20",
+          "#274a3d",
+          "#466a5b",
+          "#678c7c",
+          "#89af9f",
+          "#add4c3",
+          "#d1f9e8"
+        ]
+      },
+      "stone-50": {
+        "role": "neutral",
+        "displayName": "Stone 50",
+        "canonical": "#faf8f5",
+        "tonalRamp": [
+          "#0c0b09",
+          "#262523",
+          "#43423f",
+          "#63615e",
+          "#84827f",
+          "#a6a5a2",
+          "#cbc9c6",
+          "#f0eeeb"
+        ]
+      },
+      "stone-100": {
+        "role": "neutral",
+        "displayName": "Stone 100",
+        "canonical": "#f2ede6",
+        "tonalRamp": [
+          "#0e0b06",
+          "#28241f",
+          "#45413c",
+          "#65605b",
+          "#86827b",
+          "#a9a49e",
+          "#cdc8c2",
+          "#f3eee7"
+        ]
+      },
+      "stone-200": {
+        "role": "neutral",
+        "displayName": "Stone 200",
+        "canonical": "#e4d9cc",
+        "tonalRamp": [
+          "#110a03",
+          "#2c231a",
+          "#494036",
+          "#696054",
+          "#8b8175",
+          "#aea397",
+          "#d2c7ba",
+          "#f8eddf"
+        ]
+      },
+      "stone-400": {
+        "role": "neutral",
+        "displayName": "Stone 400",
+        "canonical": "#9e8e7e",
+        "tonalRamp": [
+          "#130801",
+          "#2f2215",
+          "#4d3f31",
+          "#6d5e4f",
+          "#8f7f70",
+          "#b2a292",
+          "#d7c6b5",
+          "#fdebda"
+        ]
+      },
+      "stone-600": {
+        "role": "neutral",
+        "displayName": "Stone 600",
+        "canonical": "#5c4a38",
+        "tonalRamp": [
+          "#150700",
+          "#312110",
+          "#503e2d",
+          "#705d4b",
+          "#927e6b",
+          "#b6a18d",
+          "#dac5b0",
+          "#feebd8"
+        ]
+      },
+      "stone-800": {
+        "role": "neutral",
+        "displayName": "Stone 800",
+        "canonical": "#2e2218",
+        "tonalRamp": [
+          "#130802",
+          "#2e2218",
+          "#4c3f34",
+          "#6c5e53",
+          "#8e7f73",
+          "#b1a295",
+          "#d6c6b9",
+          "#fcebde"
+        ]
+      },
+      "stone-900": {
+        "role": "neutral",
+        "displayName": "Stone 900",
+        "canonical": "#1a1208",
+        "tonalRamp": [
+          "#110902",
+          "#2c2319",
+          "#4a4035",
+          "#6a5f53",
+          "#8b8074",
+          "#aea396",
+          "#d3c7b9",
+          "#f8ecde"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success",
+        "canonical": "#16a34a",
+        "tonalRamp": [
+          "#001002",
+          "#002f0e",
+          "#01511f",
+          "#017631",
+          "#029d44",
+          "#44c167",
+          "#6de78a",
+          "#c8ffd0"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning",
+        "canonical": "#d97706",
+        "tonalRamp": [
+          "#180600",
+          "#3c1b00",
+          "#653300",
+          "#914d00",
+          "#c06905",
+          "#ec882a",
+          "#ffb780",
+          "#feeadc"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger",
+        "canonical": "#dc2626",
+        "tonalRamp": [
+          "#200000",
+          "#4d0002",
+          "#810007",
+          "#b80010",
+          "#e73430",
+          "#ff7367",
+          "#feb3aa",
+          "#fee9e6"
+        ]
+      },
+      "info": {
+        "role": "semantic",
+        "displayName": "Info",
+        "canonical": "#0369a1",
+        "tonalRamp": [
+          "#000c1b",
+          "#002842",
+          "#00466e",
+          "#04679e",
+          "#3589c4",
+          "#5badea",
+          "#95d1ff",
+          "#e1f1ff"
+        ]
+      },
+      "on-dark-success": {
+        "role": "semantic",
+        "displayName": "Success on Dark",
+        "canonical": "#4ade80",
+        "tonalRamp": [
+          "#001003",
+          "#002e12",
+          "#005025",
+          "#017539",
+          "#039c4e",
+          "#23c468",
+          "#58ea8b",
+          "#c7ffd4"
+        ]
+      },
+      "on-dark-warning": {
+        "role": "semantic",
+        "displayName": "Warning on Dark",
+        "canonical": "#fbbf24",
+        "tonalRamp": [
+          "#120900",
+          "#312200",
+          "#553e00",
+          "#7c5b02",
+          "#a57b00",
+          "#cf9c09",
+          "#fbbf23",
+          "#feedc9"
+        ]
+      },
+      "on-dark-danger": {
+        "role": "semantic",
+        "displayName": "Danger on Dark",
+        "canonical": "#f87171",
+        "tonalRamp": [
+          "#200001",
+          "#4d000a",
+          "#800118",
+          "#ac2933",
+          "#d35053",
+          "#fc7474",
+          "#ffb2af",
+          "#ffe9e7"
+        ]
+      },
+      "on-dark-info": {
+        "role": "semantic",
+        "displayName": "Info on Dark",
+        "canonical": "#60a5fa",
+        "tonalRamp": [
+          "#000a22",
+          "#00244e",
+          "#004181",
+          "#1961b0",
+          "#3f83d6",
+          "#62a7fd",
+          "#a5ccfe",
+          "#e4f0fe"
+        ]
+      },
+      "glow-critical": {
+        "role": "semantic",
+        "displayName": "Critical Glow",
+        "canonical": "#7a1410",
+        "tonalRamp": [
+          "#200000",
+          "#4d0001",
+          "#7b1511",
+          "#a03b31",
+          "#c75e52",
+          "#ee8173",
+          "#ffb3a8",
+          "#ffe9e5"
+        ]
+      },
+      "glow-high": {
+        "role": "semantic",
+        "displayName": "High Glow",
+        "canonical": "#7a2f10",
+        "tonalRamp": [
+          "#1d0200",
+          "#451100",
+          "#712705",
+          "#95482a",
+          "#bb694c",
+          "#e18c6d",
+          "#feb59b",
+          "#fee9e2"
+        ]
+      },
+      "glow-medium": {
+        "role": "semantic",
+        "displayName": "Medium Glow",
+        "canonical": "#7a5a10",
+        "tonalRamp": [
+          "#130900",
+          "#322200",
+          "#563d00",
+          "#7b5b12",
+          "#9e7d3a",
+          "#c2a05d",
+          "#e7c481",
+          "#ffeccb"
+        ]
+      },
+      "ecocash": {
+        "role": "semantic",
+        "displayName": "EcoCash Green",
+        "canonical": "#00a850",
+        "tonalRamp": [
+          "#001003",
+          "#002e10",
+          "#005122",
+          "#007536",
+          "#059c4b",
+          "#38c269",
+          "#65e88c",
+          "#c8ffd3"
+        ]
+      },
+      "onemoney": {
+        "role": "semantic",
+        "displayName": "OneMoney Red",
+        "canonical": "#e30613",
+        "tonalRamp": [
+          "#210000",
+          "#4e0001",
+          "#800106",
+          "#b9000b",
+          "#ee2121",
+          "#fe7466",
+          "#feb3a9",
+          "#fee9e6"
+        ]
+      },
+      "innbucks": {
+        "role": "semantic",
+        "displayName": "InnBucks Amber",
+        "canonical": "#f7a800",
+        "tonalRamp": [
+          "#140800",
+          "#352000",
+          "#5a3b00",
+          "#835700",
+          "#ae7500",
+          "#dc9500",
+          "#ffbb52",
+          "#ffebd1"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The single hero number per screen."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles and the greeting."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rows, descriptions and form text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Mono micro-labels: eyebrows, headers, chips, amounts, actions."
+      }
+    },
+    "shadows": [
+      {
+        "name": "urgency-glow-list",
+        "value": "0 0 20px -10px <priority fill>",
+        "purpose": "Complaint cards in the list panel."
+      },
+      {
+        "name": "urgency-glow-dashboard",
+        "value": "0 0 24px -8px <priority fill>",
+        "purpose": "Complaint cards on the dashboard."
+      },
+      {
+        "name": "popover",
+        "value": "0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1)",
+        "purpose": "Small floating panels such as the upgrade prompt."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "ease-in-out",
+        "purpose": "Default easing for state and entry transitions."
+      },
+      {
+        "name": "duration-entry",
+        "value": "200ms",
+        "purpose": "Fade plus slide-up entry transitions (framer-motion)."
+      },
+      {
+        "name": "duration-overlay",
+        "value": "100ms",
+        "purpose": "Dialog and menu fade and zoom (tw-animate-css)."
+      },
+      {
+        "name": "press",
+        "value": "translateY(1px)",
+        "purpose": "Active-press response on buttons."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Landlord sidebar row: default and active states with a red complaint count.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-item--active\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\"/></svg><span>Dashboard</span></a><a class=\"ds-nav-item\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"2\" width=\"16\" height=\"20\" rx=\"2\"/><path d=\"M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01\"/></svg><span>Properties</span></a></nav>",
+      "css": ".ds-nav{background:#150b07;padding:12px;width:220px;display:flex;flex-direction:column;gap:4px;font-family:Inter, Arial, Helvetica, sans-serif}.ds-nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:16px;border:1px solid transparent;color:rgba(255,255,255,.55);font-size:13px;text-decoration:none;transition:background .2s,color .2s}.ds-nav-item:hover{background:rgba(255,255,255,.06);color:#fff}.ds-nav-item:focus-visible{outline:2px solid #e8835c;outline-offset:2px}.ds-nav-item--active{border-color:#c8522a;background:rgba(200,82,42,.1);color:#c8522a}"
+    },
+    {
+      "name": "Hero Stat",
+      "kind": "card",
+      "refersTo": "card-hero",
+      "description": "The one Display-size number on a dashboard, with a mono eyebrow and trend.",
+      "html": "<div class=\"ds-hero\"><p class=\"ds-hero-eyebrow\">ON-TIME COLLECTIONS THIS MONTH</p><div class=\"ds-hero-row\"><span class=\"ds-hero-num\">94%</span><span class=\"ds-hero-trend\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 7-8.5 8.5-5-5L2 17\"/><path d=\"M16 7h6v6\"/></svg>+3% vs last month</span></div></div>",
+      "css": ".ds-hero{background:#1f130d;border:1px solid #3a2216;border-radius:24px;padding:24px;color:#fff;min-width:300px}.ds-hero-eyebrow{margin:0;font-family:'JetBrains Mono', ui-monospace, monospace;font-size:11px;letter-spacing:.025em;color:rgba(255,255,255,.55)}.ds-hero-row{display:flex;align-items:baseline;gap:12px;margin-top:4px}.ds-hero-num{font-family:'Plus Jakarta Sans', Inter, sans-serif;font-weight:800;font-size:48px;line-height:1}.ds-hero-trend{display:flex;align-items:center;gap:4px;font-family:Inter, Arial, Helvetica, sans-serif;font-size:13px;font-weight:500;color:#4ade80}"
+    },
+    {
+      "name": "Stat Tile",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Small dashboard metric: mono caption, heavy value, optional colored sub-line.",
+      "html": "<div class=\"ds-stat\"><p class=\"ds-stat-label\">RENT COLLECTED</p><p class=\"ds-stat-value\">$8,400</p><p class=\"ds-stat-sub\">of $9,200 due</p></div>",
+      "css": ".ds-stat{background:#1f130d;border:1px solid #3a2216;border-radius:24px;padding:16px;color:#fff;min-width:180px}.ds-stat-label{margin:0;font-family:'JetBrains Mono', ui-monospace, monospace;font-size:10px;letter-spacing:.025em;color:rgba(255,255,255,.55)}.ds-stat-value{margin:4px 0 0;font-family:'Plus Jakarta Sans', Inter, sans-serif;font-weight:800;font-size:24px}.ds-stat-sub{margin:0;font-family:Inter, Arial, Helvetica, sans-serif;font-size:12px;color:#4ade80}"
+    },
+    {
+      "name": "Complaint Card",
+      "kind": "custom",
+      "refersTo": "complaint-card-critical",
+      "description": "Priority-filled card with its own soft underglow; the only place glow is used.",
+      "html": "<a class=\"ds-complaint\" href=\"#\"><div class=\"ds-complaint-top\"><span class=\"ds-complaint-who\">Unit 4B · Chipo Mutasa</span><span class=\"ds-complaint-time\">2h ago</span></div><p class=\"ds-complaint-title\">Water pump not working, no pressure since Monday</p></a>",
+      "css": ".ds-complaint{display:block;background:#7a1410;border-radius:24px;padding:12px;color:#fff;text-decoration:none;box-shadow:0 0 20px -10px #7a1410;width:320px;font-family:Inter, Arial, Helvetica, sans-serif;transition:transform .2s}.ds-complaint:hover{transform:translateY(-1px)}.ds-complaint:focus-visible{outline:2px solid #e8835c;outline-offset:2px}.ds-complaint-top{display:flex;justify-content:space-between;align-items:center}.ds-complaint-who{font-size:13px;font-weight:600}.ds-complaint-time{font-size:11px;color:rgba(255,255,255,.6)}.ds-complaint-title{margin:2px 0 0;font-size:12px;color:rgba(255,255,255,.8)}"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "badge-status",
+      "description": "Hue-matched text on a 15-18% tint: payment method and rent status pills.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-badge ds-badge--ecocash\">EcoCash</span><span class=\"ds-badge ds-badge--paid\">Paid</span><span class=\"ds-badge ds-badge--pending\">Pending</span><span class=\"ds-badge ds-badge--overdue\">Overdue</span></div>",
+      "css": ".ds-badges{display:flex;gap:8px;font-family:Inter, Arial, Helvetica, sans-serif}.ds-badge{border-radius:9999px;padding:2px 8px;font-size:11px;font-weight:500}.ds-badge--ecocash{background:rgba(0,168,80,.18);color:#4ade80}.ds-badge--paid{background:rgba(74,222,128,.15);color:#4ade80}.ds-badge--pending{background:rgba(251,191,36,.15);color:#fbbf24}.ds-badge--overdue{background:rgba(248,113,113,.15);color:#f87171}"
+    },
+    {
+      "name": "Filter Chips",
+      "kind": "chip",
+      "refersTo": "chip-filter-active",
+      "description": "Pill filters in mono 11px; selected is a solid terracotta fill.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-chip--active\" type=\"button\">All</button><button class=\"ds-chip\" type=\"button\">Open</button><button class=\"ds-chip\" type=\"button\">In Progress</button></div>",
+      "css": ".ds-chips{display:flex;gap:6px;font-family:'JetBrains Mono', ui-monospace, monospace}.ds-chip{border-radius:9999px;padding:4px 10px;font-family:inherit;font-size:11px;background:#1f130d;border:1px solid #3a2216;color:rgba(255,255,255,.55);cursor:pointer;transition:background .2s,color .2s}.ds-chip:hover{color:#fff}.ds-chip:focus-visible{outline:2px solid #e8835c;outline-offset:2px}.ds-chip--active{background:#c8522a;border-color:#c8522a;color:#fff}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Terracotta fill, white mono uppercase label.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">UPGRADE PLAN</button>",
+      "css": ".ds-btn-primary{background:#c8522a;color:#fff;border:0;border-radius:16px;padding:6px 12px;font-family:'JetBrains Mono', ui-monospace, monospace;font-size:11px;font-weight:500;letter-spacing:.025em;cursor:pointer;transition:background .2s,transform .1s}.ds-btn-primary:hover{background:#9a3a1a}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:3px solid rgba(232,131,92,.5);outline-offset:2px}"
+    },
+    {
+      "name": "Action Button",
+      "kind": "button",
+      "refersTo": "button-action",
+      "description": "Lighter terracotta for time-sensitive row actions such as MARK PAID.",
+      "html": "<button class=\"ds-btn-action\" type=\"button\">MARK PAID</button>",
+      "css": ".ds-btn-action{background:#e8835c;color:#fff;border:0;border-radius:16px;padding:6px 12px;font-family:'JetBrains Mono', ui-monospace, monospace;font-size:11px;font-weight:500;letter-spacing:.025em;cursor:pointer;transition:background .2s,transform .1s}.ds-btn-action:hover{background:#c8522a}.ds-btn-action:active{transform:translateY(1px)}.ds-btn-action:focus-visible{outline:3px solid rgba(232,131,92,.5);outline-offset:2px}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Ember Card field with a leading search icon and terracotta focus ring.",
+      "html": "<label class=\"ds-search\"><span class=\"ds-search-icon\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg></span><input class=\"ds-search-input\" placeholder=\"Search unit or tenant\" /></label>",
+      "css": ".ds-search{position:relative;display:block;width:280px}.ds-search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.55);display:flex}.ds-search-input{width:100%;box-sizing:border-box;background:#1f130d;border:1px solid #3a2216;border-radius:16px;padding:8px 12px 8px 32px;color:#fff;font-family:Inter, Arial, Helvetica, sans-serif;font-size:13px;outline:none;transition:border-color .2s,box-shadow .2s}.ds-search-input::placeholder{color:rgba(255,255,255,.55)}.ds-search-input:focus-visible{border-color:#c8522a;box-shadow:0 0 0 3px rgba(200,82,42,.35)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Msasa Rent Roll",
+    "overview": "A rent roll is the record a landlord actually trusts: who owes what, who has paid, what is broken. The Msasa Rent Roll is that record made warm and local, with colors drawn from the Zimbabwean landscape and set on deep espresso grounds so it reads like a well-kept ledger at dusk rather than a generic dashboard.",
+    "keyCharacteristics": [
+      "Warm near-black grounds with a single terracotta voice (landlord) or teal voice (tenant), never cold grey.",
+      "Mono, uppercase micro-labels for eyebrows, amounts, references and actions; heavy geometric headings for the numbers that matter.",
+      "Flat tonal cards with a 1px warm border; urgency alone earns a colored underglow.",
+      "Money always reads in both currencies; payment method and status are always visible as small pills.",
+      "Mobile-first: bottom tab bar, compact stat labels, fixed top bar, skeletons instead of spinners."
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "Each portal has one brand voice: terracotta for landlords, teal for tenants. They never share a screen as competing accents.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm Ground Rule",
+        "body": "Every neutral is warm. A cold grey, pure black, or blue-tinted neutral is a defect.",
+        "section": "colors"
+      },
+      {
+        "name": "The Decoupled Glow Rule",
+        "body": "A complaint card's glow color is its own token, separate from its background. The two are allowed to differ.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Record Rule",
+        "body": "Anything that is a record (amount, reference, date, status caption, action verb) is set in JetBrains Mono. Prose is never mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Hero Rule",
+        "body": "Only one Display-size number appears on a screen.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "A surface has no shadow at rest. Shadow or glow appears only for urgency or for something floating above the page.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do show money in both currencies: \"$1,200 USD\" with the ZiG equivalent, and keep a visible exchange-rate pill near any total.",
+      "Do put EcoCash first in every payment-method list, and show payment method and status as pills on every rent row.",
+      "Do tint proof-pending ledger rows with terracotta at 8% so a landlord can find evidence to review.",
+      "Do keep touch targets comfortable on mobile (aim for 44px) even where desktop rows are compact.",
+      "Do use skeletons that match the final layout so nothing shifts on a slow connection.",
+      "Do write dates as \"Monday, 22 June 2026\" and phones as +263 7X XXX XXXX."
+    ],
+    "donts": [
+      "Don't introduce cold greys, pure black, or blue-tinted neutrals; every neutral is warm.",
+      "Don't add textures, patterns, or new hairline dividers between sections.",
+      "Don't use the urgency glow for anything except complaint priority.",
+      "Don't mix the terracotta and teal voices on one screen.",
+      "Don't hard-block or blank gated features; render them blurred with an upgrade prompt to billing.",
+      "Don't show an in-app payment control, analytics, announcements or any other Phase 1 out-of-scope feature, even as a teaser."
+    ]
+  }
+}
