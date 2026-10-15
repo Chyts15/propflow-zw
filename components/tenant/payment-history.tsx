@@ -46,6 +46,7 @@ export function PaymentHistory({ records }: { records: HistoryRow[] }) {
             <button
               type="button"
               onClick={() => setOpenId(open ? null : r.id)}
+              aria-expanded={open}
               className="flex w-full items-center justify-between px-4 py-3"
             >
               <span className="flex items-center gap-2">
@@ -66,14 +67,24 @@ export function PaymentHistory({ records }: { records: HistoryRow[] }) {
                 />
               </span>
             </button>
-            {open && (
-              <div className="px-4 pb-3 text-xs" style={{ color: t.fgMuted }}>
-                {r.paymentMethod && <p>Method: {r.paymentMethod.replace("_", " ")}</p>}
-                {r.referenceNo && <p>Reference: {r.referenceNo}</p>}
-                {r.paidAt && <p>Paid: {new Date(r.paidAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>}
-                {!r.paymentMethod && !r.paidAt && <p>No payment recorded for this period yet.</p>}
+            {/* The details are always in the page and the row opens by easing its height from 0fr
+                to 1fr, which animates the real content height without touching a layout
+                property. aria-hidden keeps the closed text out of the reading order. */}
+            <div
+              className="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
+              style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
+              aria-hidden={!open}
+            >
+              <div className="overflow-hidden">
+                <div className="px-4 pb-3 text-xs" style={{ color: t.fgMuted }}>
+                  {r.paymentMethod && <p>Method: {r.paymentMethod.replace("_", " ")}</p>}
+                  {r.referenceNo && <p>Reference: {r.referenceNo}</p>}
+                  {r.paidAt && <p>Paid: {new Date(r.paidAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>}
+                  {!r.paymentMethod && !r.paidAt && <p>No payment recorded for this period yet.</p>}
+                </div>
               </div>
-            )}
+            </div>
+
           </div>
         );
       })}

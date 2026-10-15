@@ -144,6 +144,164 @@
   --radius-2xl: calc(var(--radius) * 1.5);
 }
 
+/* ── Motion ──────────────────────────────────────────────────────────────────
+   One vocabulary for the whole app, in CSS rather than a JS library: it starts at
+   first paint with no JavaScript, so on Econet 2G the page is visible long before React
+   hydrates (a JS entrance sets opacity 0 in the server HTML and holds the page there
+   until it does). Only transform, opacity, clip-path and colour move, on small elements.
+   Every rule has a prefers-reduced-motion path that drops the travel and keeps the fade
+   or colour change that carries the meaning. */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes drop-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Bottom-up reveal: the visible region grows from the ground line. */
+@keyframes ground-reveal {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes row-flash {
+  from { background-color: rgb(232 131 92 / 0.32); }
+  to { background-color: transparent; }
+}
+
+@keyframes attention-ring {
+  from { box-shadow: 0 0 0 0 rgb(248 113 113 / 0.55); }
+  to { box-shadow: 0 0 0 14px rgb(248 113 113 / 0); }
+}
+
+@keyframes progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(260%); }
+}
+
+/* Route change inside the landlord and tenant shells (see the template.tsx files):
+   200ms fade and 8px rise, quick enough that nobody waits on it. */
+.page-enter {
+  animation: rise-in 200ms var(--ease-out) both;
+}
+
+/* A staggered arrival: set --i for the order and --d for a base delay in ms. */
+.enter-up {
+  animation: rise-in 420ms var(--ease-out) both;
+  animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 55ms);
+}
+
+.enter-drop {
+  animation: drop-in 500ms var(--ease-out) both;
+  animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 55ms);
+}
+
+.enter-fade {
+  animation: fade-in 300ms ease-out both;
+  animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 55ms);
+}
+
+.ground-reveal {
+  animation: ground-reveal 700ms var(--ease-out) both;
+  animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 60ms);
+}
+
+/* Acknowledges a row that just changed (a payment recorded or undone). */
+.row-flash {
+  animation: row-flash 1400ms ease-out both;
+}
+
+/* One-time pulse on something that needs attention now. Two beats, then still. */
+.attention-ring {
+  animation: attention-ring 1100ms ease-out 2 both;
+}
+
+/* A bar sweeping along a panel edge while a route loads: honest feedback on a slow link. */
+.sweep-bar {
+  animation: progress-sweep 1100ms var(--ease-out) infinite;
+}
+
+/* The transition-shaped helpers live in the components layer on purpose: unlayered CSS beats
+   Tailwind's utilities whatever the specificity, so an element that sets its own
+   transition-* utility (an arrow that nudges, a panel that fades) would otherwise be
+   silently overridden. In this layer a utility on the element wins. */
+@layer components {
+  /* Hand-built buttons (the app styles most controls inline, so they have no hover or pressed
+     state of their own): a quick press, and a lift in brightness where hover exists. */
+  .press {
+    transition: transform 100ms var(--ease-out), filter 150ms ease-out, background-color 150ms, color 150ms;
+  }
+  .press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  @media (hover: hover) {
+    .press:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+  }
+
+  /* Landing page: the theme toggle crossfades colour rather than snapping, and the portal
+     panels widen on hover and flood on click. */
+  .theme-fade,
+  .theme-fade * {
+    transition: color 300ms, background-color 300ms, border-color 300ms, fill 300ms;
+  }
+  .theme-fade .panel-width {
+    transition: width 200ms ease-in-out, background-color 300ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .press:active:not(:disabled) {
+      transform: none;
+    }
+    .theme-fade .panel-width {
+      transition: background-color 300ms;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Travel goes; the fade stays, shorter, so content still arrives rather than appearing cold. */
+  .page-enter,
+  .enter-up,
+  .enter-drop,
+  .enter-fade {
+    animation: fade-in 160ms ease-out both;
+    animation-delay: 0ms;
+  }
+  .ground-reveal {
+    animation: fade-in 240ms ease-out both;
+    animation-delay: 0ms;
+  }
+  .attention-ring {
+    animation: none;
+  }
+  /* Feedback that confirms an action stays, as colour only. */
+  .row-flash {
+    animation-duration: 900ms;
+  }
+  /* A looping bar becomes a still one. */
+  .sweep-bar {
+    animation: none;
+    transform: none;
+    width: 100%;
+    opacity: 0.7;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

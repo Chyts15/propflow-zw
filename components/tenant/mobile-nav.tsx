@@ -60,7 +60,7 @@ export function TenantMobileTabBar() {
           <Link
             key={href}
             href={href}
-            className="flex flex-1 flex-col items-center justify-center gap-0.5"
+            className="press flex flex-1 flex-col items-center justify-center gap-0.5"
             style={{ color: active ? t.accentLight : t.fgMuted }}
           >
             <Icon className="h-5 w-5" />

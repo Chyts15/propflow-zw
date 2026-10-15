@@ -67,7 +67,7 @@ export function MobileTabBar({ openComplaintsCount = 0 }: { openComplaintsCount?
             href={enabled ? href : "#"}
             aria-disabled={!enabled}
             onClick={(e) => !enabled && e.preventDefault()}
-            className="relative flex flex-1 flex-col items-center justify-center gap-0.5"
+            className="press relative flex flex-1 flex-col items-center justify-center gap-0.5"
             style={{ color: active ? t.accent : enabled ? t.fgMuted : t.fgFaint }}
           >
             <span className="relative">

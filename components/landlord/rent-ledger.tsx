@@ -65,12 +65,20 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
   const [currency, setCurrency] = useState<Currency>("USD");
   const [markPaidRow, setMarkPaidRow] = useState<RentRow | null>(null);
   const [undoRow, setUndoRow] = useState<RentRow | null>(null);
+  // The row whose payment was just recorded or undone: it flashes once so the eye can find it
+  // after the page refreshes, then the class is cleared when the animation ends.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flash = (id: string) => ({
+    className: flashId === id ? "row-flash" : undefined,
+    onAnimationEnd: () => setFlashId((current) => (current === id ? null : current)),
+  });
 
   // Lives here, not in the dialog: the dialog closes on success, and the Undo offered in the toast
   // has to outlive it.
   const undo = trpc.rent.undoPayment.useMutation({
-    onSuccess: () => {
+    onSuccess: (_record, variables) => {
       toast.success("Payment undone");
+      setFlashId(variables.rentRecordId);
       router.refresh();
     },
     onError: (err) => {
@@ -80,6 +88,7 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
   });
 
   function handleRecorded(p: RecordedPayment) {
+    setFlashId(p.rentRecordId);
     const text =
       p.status === "PAID"
         ? `Unit ${p.unitNumber} marked paid`
@@ -117,7 +126,7 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
         key="record"
         type="button"
         onClick={() => setMarkPaidRow(r)}
-        className={`${FOCUS_RING} rounded-lg font-mono text-[11px] font-medium text-white ${size} ${layout === "card" ? "flex-1 text-xs" : ""}`}
+        className={`press ${FOCUS_RING} rounded-lg font-mono text-[11px] font-medium text-white ${size} ${layout === "card" ? "flex-1 text-xs" : ""}`}
         style={{ backgroundColor: t.accentLight }}
       >
         {r.status === "PARTIAL" ? "ADD PAYMENT" : "MARK PAID"}
@@ -129,7 +138,7 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
         type="button"
         onClick={() => setUndoRow(r)}
         aria-label={`Undo the $${usd(lastPayment.amountUsd)} USD payment on unit ${r.unit.unitNumber}`}
-        className={`${FOCUS_RING} rounded-lg font-mono text-[11px] tabular-nums ${size}`}
+        className={`press ${FOCUS_RING} rounded-lg font-mono text-[11px] tabular-nums ${size}`}
         style={{ backgroundColor: "rgba(255,255,255,0.06)", color: t.fgMuted }}
       >
         UNDO ${usd(lastPayment.amountUsd)}
@@ -189,6 +198,7 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
               return (
                 <tr
                   key={r.id}
+                  {...flash(r.id)}
                   style={{
                     borderTop: i > 0 ? `1px solid ${t.cardBorder}` : undefined,
                     backgroundColor: proofPending ? "rgba(200,82,42,0.08)" : undefined,
@@ -259,7 +269,8 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
           return (
             <div
               key={r.id}
-              className="rounded-2xl p-4"
+              onAnimationEnd={flash(r.id).onAnimationEnd}
+              className={`rounded-2xl p-4 ${flashId === r.id ? "row-flash" : ""}`}
               style={{
                 backgroundColor: proofPending ? "rgba(200,82,42,0.1)" : t.cardBg,
                 border: `1px solid ${proofPending ? t.accent : t.cardBorder}`,
@@ -337,6 +348,7 @@ export function RentLedger({ records, rate }: { records: RentRow[]; rate: Rate }
           payment={undoRow.lastPayment}
           open
           onOpenChange={(open) => !open && setUndoRow(null)}
+          onUndone={setFlashId}
         />
       )}
     </div>

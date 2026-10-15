@@ -25,6 +25,7 @@ export function UndoPaymentDialog({
   payment,
   open,
   onOpenChange,
+  onUndone,
 }: {
   rentRecordId: string;
   unitNumber: string;
@@ -32,11 +33,14 @@ export function UndoPaymentDialog({
   payment: { id: string; amountUsd: number; method: string | null; createdAt: Date };
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Lets the ledger flash the row that just changed. */
+  onUndone?: (rentRecordId: string) => void;
 }) {
   const router = useRouter();
   const undo = trpc.rent.undoPayment.useMutation({
     onSuccess: () => {
       toast.success(`Payment on Unit ${unitNumber} undone`);
+      onUndone?.(rentRecordId);
       onOpenChange(false);
       router.refresh();
     },

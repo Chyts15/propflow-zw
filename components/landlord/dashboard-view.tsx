@@ -265,8 +265,14 @@ export function DashboardView({
           {stats.criticalComplaints > 0 && (
             <Link
               href={criticalHref}
-              className={`mt-6 flex min-h-11 items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm transition hover:brightness-125 ${FOCUS}`}
-              style={{ backgroundColor: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", color: "#f87171" }}
+              // The ring pulses twice as the page settles (after the route fade), then stays still.
+              className={`attention-ring mt-6 flex min-h-11 items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm transition hover:brightness-125 ${FOCUS}`}
+              style={{
+                backgroundColor: "rgba(220,38,38,0.15)",
+                border: "1px solid rgba(220,38,38,0.3)",
+                color: "#f87171",
+                animationDelay: "350ms",
+              }}
             >
               <span className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />

@@ -281,7 +281,7 @@ export function BillingPanel({
           return (
             <div
               key={plan.tier}
-              className="rounded-2xl p-4"
+              className="rounded-2xl p-4 transition-colors duration-200"
               style={{
                 backgroundColor: t.cardBg,
                 border: `1px solid ${highlighted ? t.accent : t.cardBorder}`,
@@ -320,7 +320,7 @@ export function BillingPanel({
                 disabled={busy}
                 aria-pressed={selected === plan.tier}
                 onClick={() => setSelected(plan.tier)}
-                className={`mt-3 min-h-11 w-full rounded-lg font-mono text-xs font-medium text-white disabled:opacity-60 ${FOCUS_RING}`}
+                className={`press mt-3 min-h-11 w-full rounded-lg font-mono text-xs font-medium text-white disabled:opacity-60 ${FOCUS_RING}`}
                 style={{ backgroundColor: t.accentLight }}
               >
                 {view.label}
@@ -332,9 +332,10 @@ export function BillingPanel({
 
       {chosen && chosenView && (
         <section
+          key={chosen.tier}
           ref={confirmRef}
           aria-labelledby="confirm-heading"
-          className="mt-4 rounded-2xl p-5"
+          className="animate-in fade-in-0 slide-in-from-top-2 mt-4 rounded-2xl p-5 duration-200 motion-reduce:animate-none"
           style={{ backgroundColor: t.cardBg, border: `1px solid ${t.accent}` }}
         >
           <h3 id="confirm-heading" className="font-heading text-base font-extrabold" style={{ color: t.fg }}>
@@ -375,7 +376,7 @@ export function BillingPanel({
               type="button"
               disabled={busy}
               onClick={() => initiate.mutate({ kind: "SUBSCRIPTION", tier: chosen.tier, isAnnual })}
-              className={`min-h-11 rounded-lg px-4 font-mono text-xs font-medium text-white disabled:opacity-60 ${FOCUS_RING}`}
+              className={`press min-h-11 rounded-lg px-4 font-mono text-xs font-medium text-white disabled:opacity-60 ${FOCUS_RING}`}
               style={{ backgroundColor: t.accent }}
             >
               {busy ? "Opening Paynow…" : `Pay $${usd(chosenPrice)} USD with Paynow`}
@@ -384,7 +385,7 @@ export function BillingPanel({
               type="button"
               disabled={busy}
               onClick={() => setSelected(null)}
-              className={`min-h-11 rounded-lg px-4 font-mono text-xs disabled:opacity-60 ${FOCUS_RING}`}
+              className={`press min-h-11 rounded-lg px-4 font-mono text-xs disabled:opacity-60 ${FOCUS_RING}`}
               style={{ backgroundColor: "rgba(255,255,255,0.06)", color: t.fgMuted }}
             >
               Cancel
