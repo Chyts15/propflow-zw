@@ -1,4 +1,3 @@
-import { Bell } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getOrganization, getUnitCountForOrg, getBillingHistoryForOrg } from "@/lib/db/scoped";
@@ -39,19 +38,9 @@ export default async function BillingPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6 sm:p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-extrabold sm:text-3xl" style={{ color: t.fg }}>
-          Billing
-        </h1>
-        <button
-          type="button"
-          className="hidden h-9 w-9 items-center justify-center rounded-full sm:flex"
-          style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-        </button>
-      </div>
+      <h1 className="font-heading text-2xl font-extrabold sm:text-3xl" style={{ color: t.fg }}>
+        Billing
+      </h1>
 
       <div className="mt-6">
         <BillingPanel

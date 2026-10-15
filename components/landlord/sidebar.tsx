@@ -28,12 +28,12 @@ export function LandlordSidebar({
 }) {
   const pathname = usePathname();
   const NAV = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, enabled: true },
-    { href: "/properties", label: "Properties", icon: Building2, enabled: true },
-    { href: "/tenants", label: "Tenants", icon: Users, enabled: true },
-    { href: "/finances", label: "Finances", icon: Receipt, enabled: true },
-    { href: "/complaints", label: "Complaints", icon: MessageSquare, enabled: true, badge: openComplaintsCount || undefined },
-    { href: "/settings", label: "Settings", icon: Settings, enabled: true },
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/properties", label: "Properties", icon: Building2 },
+    { href: "/tenants", label: "Tenants", icon: Users },
+    { href: "/finances", label: "Finances", icon: Receipt },
+    { href: "/complaints", label: "Complaints", icon: MessageSquare, badge: openComplaintsCount || undefined },
+    { href: "/settings", label: "Settings", icon: Settings },
   ];
   const t = LANDLORD_DARK;
   const initials = userName
@@ -59,35 +59,31 @@ export function LandlordSidebar({
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        {NAV.map(({ href, label, icon: Icon, enabled, badge }) => {
+        {NAV.map(({ href, label, icon: Icon, badge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
               key={href}
-              href={enabled ? href : "#"}
-              aria-disabled={!enabled}
-              onClick={(e) => !enabled && e.preventDefault()}
+              href={href}
+              aria-current={active ? "page" : undefined}
               className="flex items-center justify-between rounded-lg px-3 py-2 text-sm transition"
               style={{
                 border: active ? `1px solid ${t.accent}` : "1px solid transparent",
                 backgroundColor: active ? `${t.accent}1a` : "transparent",
-                color: enabled ? (active ? t.accent : t.fgMuted) : t.fgFaint,
-                cursor: enabled ? "pointer" : "default",
+                color: active ? t.accent : t.fgMuted,
               }}
             >
               <span className="flex items-center gap-2.5">
                 <Icon className="h-4 w-4" />
                 {label}
               </span>
-              {enabled && badge ? (
+              {badge ? (
                 <span
                   className="flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-bold text-white"
                   style={{ backgroundColor: "#dc2626" }}
                 >
                   {badge}
                 </span>
-              ) : !enabled ? (
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-mono">SOON</span>
               ) : null}
             </Link>
           );

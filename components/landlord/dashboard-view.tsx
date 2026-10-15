@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ComponentProps } from "react";
-import { AlertTriangle, Bell, Check, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, Check, MessageSquareWarning } from "lucide-react";
 import { AddPropertyDialog } from "@/components/landlord/add-property-dialog";
 import { CollectionsStat } from "@/components/landlord/collections-stat";
 import { CurrencyDisplay } from "@/components/landlord/currency-display";
@@ -246,15 +246,6 @@ export function DashboardView({
         </div>
         <div className="flex items-center gap-3">
           <ExchangeRatePill rate={rate} cardBg={t.cardBg} cardBorder={t.cardBorder} fgMuted={t.fgMuted} />
-          {/* MobileTopBar already renders a bell on mobile — avoid duplicating it. */}
-          <button
-            type="button"
-            className="hidden h-9 w-9 items-center justify-center rounded-full sm:flex"
-            style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-            aria-label="Notifications"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
         </div>
       </div>
 

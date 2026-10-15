@@ -1,17 +1,21 @@
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getTenanciesForOrg, getVacantUnitsForOrg } from "@/lib/db/scoped";
+import { parseCursor } from "@/lib/pagination";
+import { ListPager } from "@/components/landlord/list-pager";
 import { InviteTenantDialog } from "@/components/landlord/invite-tenant-dialog";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
-export default async function TenantsPage() {
+export default async function TenantsPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
+  const cursor = parseCursor((await searchParams).cursor);
   const { userId } = await auth();
   const user = await getOrCreateDbUser(userId!);
   const orgId = user.orgId!;
   const t = LANDLORD_DARK;
 
-  const [{ items: tenancies }, vacantUnits] = await Promise.all([
-    getTenanciesForOrg(orgId),
+  // The list is paged: rows past the first page used to be unreachable. The cursor is in the URL.
+  const [{ items: tenancies, nextCursor }, vacantUnits] = await Promise.all([
+    getTenanciesForOrg(orgId, { cursor }),
     getVacantUnitsForOrg(orgId),
   ]);
 
@@ -24,7 +28,11 @@ export default async function TenantsPage() {
         <InviteTenantDialog vacantUnits={vacantUnits} />
       </div>
 
-      {tenancies.length === 0 ? (
+      {tenancies.length === 0 && cursor ? (
+        <p className="mt-8 text-sm" style={{ color: t.fgMuted }}>
+          There are no more tenants.
+        </p>
+      ) : tenancies.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: t.cardBorder }}>
           <p className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
             No tenants yet
@@ -57,6 +65,8 @@ export default async function TenantsPage() {
           ))}
         </div>
       )}
+
+      <ListPager basePath="/tenants" cursor={cursor} nextCursor={nextCursor} noun="tenants" />
     </div>
   );
 }

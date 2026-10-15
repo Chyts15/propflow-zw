@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
-import { LANDLORD_DARK, PRIORITY_GLOW } from "@/components/landlord/theme";
+import { trpc } from "@/lib/trpc-client";
+import { FOCUS_RING, LANDLORD_DARK, PRIORITY_GLOW } from "@/components/landlord/theme";
 import { formatRelativeTime } from "@/lib/utils";
 
 const FILTERS = ["All", "Open", "In Progress", "Resolved"] as const;
@@ -26,9 +27,46 @@ type ComplaintListItem = {
   tenantName: string;
 };
 
-export function ComplaintQueue({ complaints }: { complaints: ComplaintListItem[] }) {
+export function ComplaintQueue({
+  complaints: firstPage,
+  nextCursor: firstPageCursor,
+}: {
+  complaints: ComplaintListItem[];
+  /** Where the next page starts, or null when the first page is everything. */
+  nextCursor: string | null;
+}) {
   const t = LANDLORD_DARK;
   const pathname = usePathname();
+  const utils = trpc.useUtils();
+
+  // Only the first page comes from the server. "Load more" appends further pages here, and they are
+  // merged by id with the server's page winning: a status change in the thread pane refreshes the
+  // layout and brings new first-page props, which must not throw away what was already loaded (or
+  // the complaint being read would vanish from the list).
+  const [extra, setExtra] = useState<ComplaintListItem[]>([]);
+  const [laterCursor, setLaterCursor] = useState<string | null | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const nextCursor = laterCursor === undefined ? firstPageCursor : laterCursor;
+  const complaints = useMemo(() => {
+    const onFirstPage = new Set(firstPage.map((c) => c.id));
+    return [...firstPage, ...extra.filter((c) => !onFirstPage.has(c.id))];
+  }, [firstPage, extra]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadFailed(false);
+    try {
+      const page = await utils.complaints.list.fetch({ cursor: nextCursor });
+      setExtra((previous) => [...previous, ...page.items]);
+      setLaterCursor(page.nextCursor);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   const isIndexRoute = pathname === "/complaints";
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [search, setSearch] = useState("");
@@ -86,7 +124,9 @@ export function ComplaintQueue({ complaints }: { complaints: ComplaintListItem[]
       <div className="flex-1 space-y-2 px-3 pb-4">
         {filtered.length === 0 && (
           <p className="p-4 text-center text-sm" style={{ color: t.fgMuted }}>
-            No complaints match.
+            {nextCursor
+              ? `Nothing matches in the ${complaints.length} loaded so far. Load more to look further.`
+              : "No complaints match."}
           </p>
         )}
         {filtered.map((c) => {
@@ -112,6 +152,25 @@ export function ComplaintQueue({ complaints }: { complaints: ComplaintListItem[]
             </Link>
           );
         })}
+
+        {nextCursor && (
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className={`press min-h-11 rounded-lg px-4 font-mono text-xs disabled:opacity-60 ${FOCUS_RING}`}
+              style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.accentLight }}
+            >
+              {loadingMore ? "LOADING…" : "LOAD MORE"}
+            </button>
+            {loadFailed && (
+              <p role="alert" className="mt-2 text-xs" style={{ color: "#f87171" }}>
+                Couldn&apos;t load more. Check your connection and try again.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

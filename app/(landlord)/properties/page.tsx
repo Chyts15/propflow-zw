@@ -3,13 +3,17 @@ import { Building2 } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getPropertiesForOrg } from "@/lib/db/scoped";
+import { parseCursor } from "@/lib/pagination";
+import { ListPager } from "@/components/landlord/list-pager";
 import { AddPropertyDialog } from "@/components/landlord/add-property-dialog";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
-export default async function PropertiesPage() {
+export default async function PropertiesPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
+  const cursor = parseCursor((await searchParams).cursor);
   const { userId } = await auth();
   const user = await getOrCreateDbUser(userId!);
-  const { items: properties } = await getPropertiesForOrg(user.orgId!);
+  // The list is paged: rows past the first page used to be unreachable. The cursor is in the URL.
+  const { items: properties, nextCursor } = await getPropertiesForOrg(user.orgId!, { cursor });
   const t = LANDLORD_DARK;
 
   return (
@@ -21,7 +25,11 @@ export default async function PropertiesPage() {
         <AddPropertyDialog />
       </div>
 
-      {properties.length === 0 ? (
+      {properties.length === 0 && cursor ? (
+        <p className="mt-8 text-sm" style={{ color: t.fgMuted }}>
+          There are no more properties.
+        </p>
+      ) : properties.length === 0 ? (
         <div
           className="mt-8 rounded-2xl border border-dashed p-8 text-center"
           style={{ borderColor: t.cardBorder }}
@@ -79,6 +87,8 @@ export default async function PropertiesPage() {
           })}
         </div>
       )}
+
+      <ListPager basePath="/properties" cursor={cursor} nextCursor={nextCursor} noun="properties" />
     </div>
   );
 }

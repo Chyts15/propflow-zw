@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Bell } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { periodOf, ymdOf } from "@/lib/rent-timing";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getRentRecordsForOrg, getRentLedgerStats } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
+import { parseCursor } from "@/lib/pagination";
+import { ListPager } from "@/components/landlord/list-pager";
 import { MonthSelector } from "@/components/landlord/month-selector";
 import { RentLedger } from "@/components/landlord/rent-ledger";
 import { GenerateRentButton } from "@/components/landlord/generate-rent-button";
@@ -13,9 +14,10 @@ import { FOCUS_RING, LANDLORD_DARK } from "@/components/landlord/theme";
 export default async function FinancesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; cursor?: string }>;
 }) {
-  const { month } = await searchParams;
+  const { month, cursor: rawCursor } = await searchParams;
+  const cursor = parseCursor(rawCursor);
   const { userId } = await auth();
   const user = await getOrCreateDbUser(userId!);
   const orgId = user.orgId!;
@@ -29,9 +31,11 @@ export default async function FinancesPage({
   const periodYear = valid ? Number(month.slice(0, 4)) : current.year;
   const periodMonth = valid ? Number(month.slice(5, 7)) : current.month;
 
-  const [stats, { items: records }, rate] = await Promise.all([
+  // The ledger is paged: rows past the first page used to be unreachable while the tiles above
+  // still summed them. The cursor is in the URL, next to the month, so a refresh stays on the page.
+  const [stats, { items: records, nextCursor }, rate] = await Promise.all([
     getRentLedgerStats(orgId, periodMonth, periodYear),
-    getRentRecordsForOrg(orgId, { periodMonth, periodYear }),
+    getRentRecordsForOrg(orgId, { periodMonth, periodYear, cursor }),
     resolveExchangeRate(orgId),
   ]);
 
@@ -64,14 +68,6 @@ export default async function FinancesPage({
         </h1>
         <div className="hidden items-center gap-3 sm:flex">
           <MonthSelector value={`${periodYear}-${String(periodMonth).padStart(2, "0")}`} />
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-full"
-            style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-            aria-label="Notifications"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
         </div>
       </div>
       <div className="mt-2 sm:hidden">
@@ -105,7 +101,11 @@ export default async function FinancesPage({
         ))}
       </div>
 
-      {records.length === 0 ? (
+      {records.length === 0 && cursor ? (
+        <p className="mt-8 text-sm" style={{ color: t.fgMuted }}>
+          There are no more rent records for this month.
+        </p>
+      ) : records.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: t.cardBorder }}>
           <p className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
             No rent records for this period
@@ -121,6 +121,14 @@ export default async function FinancesPage({
       ) : (
         <RentLedger records={records} rate={rate} />
       )}
+
+      <ListPager
+        basePath="/finances"
+        query={{ month: `${periodYear}-${String(periodMonth).padStart(2, "0")}` }}
+        cursor={cursor}
+        nextCursor={nextCursor}
+        noun="rent records"
+      />
     </div>
   );
 }
