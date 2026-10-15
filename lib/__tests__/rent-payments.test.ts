@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { afterReversal, checkPayment, paymentRefusal, undoablePayment, type PaymentEventLike } from "../rent-payments";
+import { afterReversal, checkPayment, paymentRefusal, proofRefusal, undoablePayment, type PaymentEventLike } from "../rent-payments";
 
 const record = (over: Partial<{ amountDueUsd: number; amountPaidUsd: number; status: string }> = {}) => ({
   amountDueUsd: 600,
@@ -82,5 +82,16 @@ describe("afterReversal", () => {
 
   it("cannot go below zero on a legacy record whose paid amount was overwritten", () => {
     expect(afterReversal({ amountPaidUsd: 1 }, 300)).toEqual({ newPaidUsd: 0, status: "PENDING" });
+  });
+});
+
+describe("proofRefusal", () => {
+  it("lets proof be attached to rent that is still owed", () => {
+    for (const status of ["PENDING", "PARTIAL", "OVERDUE"]) expect(proofRefusal(status)).toBeNull();
+  });
+
+  it("refuses proof on rent that is already settled, so confirmed evidence is never replaced", () => {
+    expect(proofRefusal("PAID")).toMatch(/already settled/);
+    expect(proofRefusal("WAIVED")).toMatch(/already settled/);
   });
 });

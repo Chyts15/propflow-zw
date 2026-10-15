@@ -13,7 +13,7 @@ import {
   type OwingRentRecord,
   type TimedRentRecord,
 } from "@/lib/rent-timing";
-import { afterReversal, checkPayment, paymentRefusal, undoablePayment } from "@/lib/rent-payments";
+import { afterReversal, checkPayment, paymentRefusal, proofRefusal, undoablePayment } from "@/lib/rent-payments";
 import { nextPeriodEnd, type PaidTier } from "@/lib/billing-plan";
 import { round2 } from "@/lib/money";
 import type {
@@ -938,11 +938,21 @@ export async function submitPaymentProofForTenant(
   rentRecordId: string,
   data: { method: string; referenceNo?: string; proofImageUrl: string },
 ) {
+  // Evidence on rent that is already paid or waived is never replaced: a resubmission used to
+  // overwrite the method and reference the landlord had confirmed.
+  const record = await prisma.rentRecord.findFirst({ where: { id: rentRecordId, tenantId }, select: { status: true } });
+  if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+  const refusal = proofRefusal(record.status);
+  if (refusal) throw new TRPCError({ code: "CONFLICT", message: refusal });
+
+  // The status check is repeated in the write so a payment confirmed a moment ago still wins.
   const { count } = await prisma.rentRecord.updateMany({
-    where: { id: rentRecordId, tenantId },
+    where: { id: rentRecordId, tenantId, status: { notIn: ["PAID", "WAIVED"] } },
     data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
   });
-  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+  if (count === 0) {
+    throw new TRPCError({ code: "CONFLICT", message: "This month was just settled, so the proof was not saved." });
+  }
   return prisma.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
 }
 

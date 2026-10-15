@@ -63,6 +63,13 @@ export function afterReversal(record: Pick<Payable, "amountPaidUsd">, reversedUs
   return { newPaidUsd, status: (newPaidUsd > 0 ? "PARTIAL" : "PENDING") as "PARTIAL" | "PENDING" };
 }
 
+/** Proof of payment only makes sense for rent that is still owed. Null means it can be attached. */
+export function proofRefusal(status: string): string | null {
+  return status === "PAID" || status === "WAIVED"
+    ? "This month is already settled, so there is no proof to upload."
+    : null;
+}
+
 /** Plain-language reason for a refused payment. */
 export function paymentRefusal(check: Extract<PaymentCheck, { ok: false }>): string {
   switch (check.reason) {
