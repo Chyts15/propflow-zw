@@ -981,30 +981,54 @@ export async function getRentHistoryForTenant(tenantId: string, { cursor }: Curs
 
 // Tenant submits proof of a payment they already made directly to the
 // landlord (EcoCash/bank/cash) — this is NOT the landlord confirming receipt
-// (that's recordRentPayment, which is what actually writes the PaymentEvent
-// per Security §3). Submitting proof only records the tenant's claim; the
-// RentRecord stays PENDING until the landlord confirms via Mark Paid.
+// (that's recordRentPayment, which moves the money). Submitting proof only records the tenant's
+// claim; the RentRecord keeps its status and amounts until the landlord confirms via Mark Paid.
+//
+// The claim still changes the record (method, reference and photo are overwritten), so it writes a
+// PaymentEvent in the same transaction: the tenant as actor, the status unchanged, and no amount,
+// because nothing has been received yet. The history keeps what was claimed and when even after a
+// later submission replaces the record's fields. undoablePayment ignores events without an amount,
+// so a claim can never be mistaken for a payment an undo would reverse.
 export async function submitPaymentProofForTenant(
   tenantId: string,
   rentRecordId: string,
   data: { method: string; referenceNo?: string; proofImageUrl: string },
 ) {
-  // Evidence on rent that is already paid or waived is never replaced: a resubmission used to
-  // overwrite the method and reference the landlord had confirmed.
-  const record = await prisma.rentRecord.findFirst({ where: { id: rentRecordId, tenantId }, select: { status: true } });
-  if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
-  const refusal = proofRefusal(record.status);
-  if (refusal) throw new TRPCError({ code: "CONFLICT", message: refusal });
+  return prisma.$transaction(async (tx) => {
+    // Evidence on rent that is already paid or waived is never replaced: a resubmission used to
+    // overwrite the method and reference the landlord had confirmed.
+    const record = await tx.rentRecord.findFirst({ where: { id: rentRecordId, tenantId }, select: { status: true } });
+    if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+    const refusal = proofRefusal(record.status);
+    if (refusal) throw new TRPCError({ code: "CONFLICT", message: refusal });
 
-  // The status check is repeated in the write so a payment confirmed a moment ago still wins.
-  const { count } = await prisma.rentRecord.updateMany({
-    where: { id: rentRecordId, tenantId, status: { notIn: ["PAID", "WAIVED"] } },
-    data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
+    // The write is conditional on the status just read, so a payment the landlord confirmed a
+    // moment ago still wins, and the event below never states a status the record no longer has.
+    const { count } = await tx.rentRecord.updateMany({
+      where: { id: rentRecordId, tenantId, status: record.status },
+      data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
+    });
+    if (count !== 1) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "This month's rent was just updated, so the proof was not saved. Refresh the page and try again.",
+      });
+    }
+
+    await tx.paymentEvent.create({
+      data: {
+        rentRecordId,
+        actorId: tenantId,
+        source: "MANUAL",
+        fromStatus: record.status,
+        toStatus: record.status,
+        method: data.method as never,
+        referenceNo: data.referenceNo,
+      },
+    });
+
+    return tx.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
   });
-  if (count === 0) {
-    throw new TRPCError({ code: "CONFLICT", message: "This month was just settled, so the proof was not saved." });
-  }
-  return prisma.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
 }
 
 export async function getComplaintsForTenant(tenantId: string, { cursor }: Cursor = {}) {
