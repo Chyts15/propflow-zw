@@ -26,7 +26,10 @@ import {
 
 const PROPERTY_TYPES = ["FLAT", "HOUSE", "ROOM", "COTTAGE", "COMMERCIAL", "STAND"] as const;
 
-export function AddPropertyDialog() {
+// fullLabel keeps "ADD PROPERTY" on phones too. The default shortens it to "ADD" for the
+// header row on the Properties page, where space is tight; a first-run call to action
+// should say what it does.
+export function AddPropertyDialog({ fullLabel = false }: { fullLabel?: boolean } = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const create = trpc.properties.create.useMutation({
@@ -59,13 +62,21 @@ export function AddPropertyDialog() {
         render={
           <Button
             variant="outline"
-            className="border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light hover:bg-brand-primary/10"
+            className={`border-brand-primary/40 font-mono text-xs tracking-wide text-brand-primary-light hover:bg-brand-primary/10 ${
+              fullLabel ? "min-h-11 rounded-2xl px-5" : ""
+            }`}
           />
         }
       >
         <Plus className="h-4 w-4" />
-        <span className="sm:hidden">ADD</span>
-        <span className="hidden sm:inline">ADD PROPERTY</span>
+        {fullLabel ? (
+          "ADD PROPERTY"
+        ) : (
+          <>
+            <span className="sm:hidden">ADD</span>
+            <span className="hidden sm:inline">ADD PROPERTY</span>
+          </>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

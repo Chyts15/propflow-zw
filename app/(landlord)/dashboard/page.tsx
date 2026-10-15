@@ -2,14 +2,14 @@ import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getDashboardStats, getComplaintsForOrg, getRentStatusPreviewForOrg } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
+import { ZIMBABWE_TZ, periodOf, ymdOf } from "@/lib/rent-timing";
 import { DashboardView } from "@/components/landlord/dashboard-view";
 
 // The complaints a landlord still has to act on — the same set the "open complaints" count uses.
 const OPEN_COMPLAINT_STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_PARTS"] as const;
 
-// Greeting and date follow Zimbabwe time, not the server's (UTC on Vercel), so the day
-// doesn't read as yesterday between midnight and 02:00 CAT.
-const ZIMBABWE_TZ = "Africa/Harare";
+// Greeting, date and rent period follow Zimbabwe time, not the server's (UTC on Vercel), so the
+// day doesn't read as yesterday between midnight and 02:00 CAT.
 
 function greetingFor(now: Date) {
   const hour = Number(
@@ -53,11 +53,14 @@ export default async function DashboardPage() {
   const criticalHref = criticalOpen.length === 1 ? `/complaints/${criticalOpen[0].id}` : "/complaints";
 
   const now = new Date();
+  const { year, month } = periodOf(ymdOf(now));
+  const periodLabel = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: ZIMBABWE_TZ }).format(now);
   return (
     <DashboardView
       greeting={greetingFor(now)}
       firstName={user.name.split(" ")[0]}
       todayLabel={todayLabelFor(now)}
+      period={{ month, year, label: periodLabel }}
       stats={stats}
       rentRows={rentRows}
       complaints={complaints}

@@ -1,6 +1,7 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
+import { isOverdueRecord, periodOf, summarizeOnTime, ymdOf, type TimedRentRecord } from "@/lib/rent-timing";
 import type {
   Currency,
   PropertyType,
@@ -289,16 +290,17 @@ export async function getRentRecordsForOrg(
 // at most one record per unit (@@unique unitId+period) and getDashboardStats
 // already reads the same set for its totals, so this is bounded by unit count;
 // only `limit` rows are returned.
+//
+// `isOverdue` is derived from the due date (see lib/rent-timing.ts), not read from
+// the status: nothing in the app ever sets RentStatus.OVERDUE, so a PENDING record
+// that is past due is reported as overdue here.
 const RENT_URGENCY: Record<RentStatus, number> = { OVERDUE: 0, PARTIAL: 1, PENDING: 2, PAID: 3, WAIVED: 4 };
 
 export async function getRentStatusPreviewForOrg(orgId: string, limit = 5) {
-  const now = new Date();
+  const today = ymdOf(new Date());
+  const { year: periodYear, month: periodMonth } = periodOf(today);
   const records = await prisma.rentRecord.findMany({
-    where: {
-      unit: { property: { orgId } },
-      periodMonth: now.getMonth() + 1,
-      periodYear: now.getFullYear(),
-    },
+    where: { unit: { property: { orgId } }, periodMonth, periodYear },
     select: {
       id: true,
       tenantId: true,
@@ -307,16 +309,20 @@ export async function getRentStatusPreviewForOrg(orgId: string, limit = 5) {
       status: true,
       paymentMethod: true,
       proofImageUrl: true,
-      unit: { select: { unitNumber: true } },
+      paidAt: true,
+      periodMonth: true,
+      periodYear: true,
+      unit: { select: { unitNumber: true, tenancy: { select: { rentDueDay: true } } } },
     },
   });
 
   const rows = records
+    .map((r) => ({ ...r, isOverdue: isOverdueRecord(timedRecord(r), today) }))
     .sort((a, b) => {
       const proofA = a.proofImageUrl && a.status !== "PAID" ? 0 : 1;
       const proofB = b.proofImageUrl && b.status !== "PAID" ? 0 : 1;
       return (
-        RENT_URGENCY[a.status] - RENT_URGENCY[b.status] ||
+        (a.isOverdue ? 0 : RENT_URGENCY[a.status]) - (b.isOverdue ? 0 : RENT_URGENCY[b.status]) ||
         proofA - proofB ||
         b.amountDueUsd - a.amountDueUsd ||
         a.unit.unitNumber.localeCompare(b.unit.unitNumber, undefined, { numeric: true })
@@ -330,7 +336,35 @@ export async function getRentStatusPreviewForOrg(orgId: string, limit = 5) {
   const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
   const nameById = new Map(tenants.map((t) => [t.id, t.name]));
 
-  return rows.map(({ tenantId, ...r }) => ({ ...r, tenantName: nameById.get(tenantId) ?? "Unknown tenant" }));
+  return rows.map((r) => ({
+    id: r.id,
+    unit: { unitNumber: r.unit.unitNumber },
+    tenantName: nameById.get(r.tenantId) ?? "Unknown tenant",
+    amountDueUsd: r.amountDueUsd,
+    amountPaidUsd: r.amountPaidUsd,
+    status: r.status,
+    isOverdue: r.isOverdue,
+    paymentMethod: r.paymentMethod,
+    proofImageUrl: r.proofImageUrl,
+  }));
+}
+
+// Adapts a Prisma rent record (with its unit's tenancy selected) to the shape the
+// pure timing rules take.
+function timedRecord(r: {
+  status: RentStatus;
+  paidAt: Date | null;
+  periodMonth: number;
+  periodYear: number;
+  unit: { tenancy: { rentDueDay: number } | null };
+}): TimedRentRecord {
+  return {
+    status: r.status,
+    paidAt: r.paidAt,
+    periodMonth: r.periodMonth,
+    periodYear: r.periodYear,
+    rentDueDay: r.unit.tenancy?.rentDueDay,
+  };
 }
 
 export async function getRentRecordForOrg(orgId: string, rentRecordId: string) {
@@ -598,27 +632,45 @@ export async function setManualExchangeRate(orgId: string, usdToZig: number) {
 
 // ---- Dashboard ------------------------------------------------------------
 
-function pctPaid(records: { status: string }[]) {
-  return records.length === 0 ? 0 : Math.round((records.filter((r) => r.status === "PAID").length / records.length) * 100);
-}
-
 export async function getDashboardStats(orgId: string) {
-  const now = new Date();
-  const periodMonth = now.getMonth() + 1;
-  const periodYear = now.getFullYear();
-  const lastMonthDate = new Date(periodYear, periodMonth - 2, 1);
-  const lastPeriodMonth = lastMonthDate.getMonth() + 1;
-  const lastPeriodYear = lastMonthDate.getFullYear();
+  // Periods and "today" are Zimbabwe calendar days, not the server's (UTC) — see lib/rent-timing.ts.
+  const today = ymdOf(new Date());
+  const { year: periodYear, month: periodMonth } = periodOf(today);
+  const lastPeriodMonth = periodMonth === 1 ? 12 : periodMonth - 1;
+  const lastPeriodYear = periodMonth === 1 ? periodYear - 1 : periodYear;
+  // What the timing rules need from each record: when it was paid, which period it
+  // belongs to, and its tenancy's due day.
+  const timing = {
+    paidAt: true,
+    periodMonth: true,
+    periodYear: true,
+    unit: { select: { tenancy: { select: { rentDueDay: true } } } },
+  } as const;
 
-  const [units, rentRecords, lastMonthRentRecords, openComplaints, criticalComplaints, org] = await Promise.all([
+  const [
+    units,
+    propertyCount,
+    rentRecords,
+    lastMonthRentRecords,
+    unpaidRecords,
+    openComplaints,
+    criticalComplaints,
+    org,
+  ] = await Promise.all([
     prisma.unit.findMany({ where: { property: { orgId } }, select: { isVacant: true } }),
+    prisma.property.count({ where: { orgId } }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth, periodYear },
-      select: { status: true, amountDueUsd: true, amountPaidUsd: true, proofImageUrl: true },
+      select: { status: true, amountDueUsd: true, amountPaidUsd: true, proofImageUrl: true, ...timing },
     }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth: lastPeriodMonth, periodYear: lastPeriodYear },
-      select: { status: true },
+      select: { status: true, ...timing },
+    }),
+    // Every unpaid record from any period: rent still owed from earlier months is overdue too.
+    prisma.rentRecord.findMany({
+      where: { unit: { property: { orgId } }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+      select: { unitId: true, status: true, amountDueUsd: true, amountPaidUsd: true, ...timing },
     }),
     prisma.complaint.count({
       where: { unit: { property: { orgId } }, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_PARTS"] } },
@@ -633,29 +685,37 @@ export async function getDashboardStats(orgId: string) {
   const totalUnits = units.length;
   const dueUsd = rentRecords.reduce((sum, r) => sum + r.amountDueUsd, 0);
   const collectedUsd = rentRecords.reduce((sum, r) => sum + r.amountPaidUsd, 0);
-  const onTimeCollectionsPct = pctPaid(rentRecords);
+  // On-time = paid on or before the due date, over the rent that has fallen due. Last
+  // month is finished, so the two rates compare fairly even early in this month.
+  const onTime = summarizeOnTime(rentRecords.map(timedRecord), today);
+  const lastMonthOnTime = summarizeOnTime(lastMonthRentRecords.map(timedRecord), today);
+  const onTimeCollectionsPct = onTime.pct;
   const onTimeCollectionsTrend =
-    lastMonthRentRecords.length === 0 ? null : onTimeCollectionsPct - pctPaid(lastMonthRentRecords);
+    onTime.pct == null || lastMonthOnTime.pct == null ? null : onTime.pct - lastMonthOnTime.pct;
 
-  // What is still owed on overdue records, and how many tenant proofs are
-  // waiting on the landlord. Both come from the records already loaded above.
-  const overdue = rentRecords.filter((r) => r.status === "OVERDUE");
+  // Money still owed past its due date (derived — nothing sets the OVERDUE status), and how
+  // many tenant proofs are waiting on the landlord.
+  const overdue = unpaidRecords.filter((r) => isOverdueRecord(timedRecord(r), today));
   const overdueUsd = overdue.reduce((sum, r) => sum + Math.max(r.amountDueUsd - r.amountPaidUsd, 0), 0);
+  const overdueCount = new Set(overdue.map((r) => r.unitId)).size;
   const proofsToReview = rentRecords.filter((r) => r.proofImageUrl && r.status !== "PAID").length;
 
   return {
     orgName: org.name,
     smsCredits: org.smsCredits,
+    propertyCount,
     totalUnits,
     occupiedUnits,
     dueUsd,
     collectedUsd,
     rentRecordCount: rentRecords.length,
-    overdueCount: overdue.length,
+    overdueCount,
     overdueUsd,
     proofsToReview,
     onTimeCollectionsPct,
     onTimeCollectionsTrend,
+    onTimeDue: onTime.due,
+    onTimeCount: onTime.onTime,
     openComplaints,
     criticalComplaints,
   };

@@ -14,6 +14,11 @@ export const LANDLORD_DARK = {
   accentLight: "#e8835c",
 } as const;
 
+// Keyboard focus for hand-built controls. Inline styles can't express :focus-visible, so
+// links and buttons add this class string next to their themed colors.
+export const FOCUS_RING =
+  "outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary-light";
+
 export const PRIORITY_GLOW: Record<string, string> = {
   CRITICAL: "#7a1410",
   HIGH: "#7a2f10",
