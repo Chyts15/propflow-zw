@@ -155,10 +155,16 @@ function StatTile({
 
 // A landlord with no units yet: a short path to the first value instead of a wall of zeros.
 function FirstRun({ propertyCount }: { propertyCount: number }) {
+  // Each step opens the screen where it is done. Step 1 is the button below until a property exists.
   const steps = [
-    { done: propertyCount > 0, title: "Add a property", body: "Name it and say how many units it has." },
-    { done: false, title: "Add your units", body: "Set the monthly rent in USD for each one." },
-    { done: false, title: "Invite your tenants", body: "They upload their EcoCash proof here instead of sending screenshots on WhatsApp." },
+    { done: propertyCount > 0, title: "Add a property", body: "Give it a name and its address.", href: null },
+    { done: false, title: "Add your units", body: "Set the monthly rent in USD for each one.", href: "/properties" },
+    {
+      done: false,
+      title: "Invite your tenants",
+      body: "Each tenant gets an email with a link to set up their free account. They upload their EcoCash proof there instead of sending screenshots on WhatsApp.",
+      href: "/tenants",
+    },
   ];
   return (
     <section
@@ -176,7 +182,7 @@ function FirstRun({ propertyCount }: { propertyCount: number }) {
         {steps.map((s, i) => (
           <li key={s.title} className="flex items-start gap-3">
             <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs"
+              className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs"
               style={
                 s.done
                   ? { backgroundColor: "rgba(74,222,128,0.15)", color: "#4ade80" }
@@ -186,10 +192,20 @@ function FirstRun({ propertyCount }: { propertyCount: number }) {
               {s.done ? <Check className="h-3.5 w-3.5" aria-label="Done" /> : i + 1}
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold" style={{ color: t.fg }}>
-                {s.title}
-              </p>
-              <p className="text-sm" style={{ color: t.fgMuted }}>
+              {s.href ? (
+                <Link
+                  href={s.href}
+                  className={`press inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                  style={{ color: t.fg, textDecorationColor: t.cardBorder }}
+                >
+                  {s.title} →
+                </Link>
+              ) : (
+                <p className="flex min-h-11 items-center text-sm font-semibold" style={{ color: t.fg }}>
+                  {s.title}
+                </p>
+              )}
+              <p className="-mt-2 text-sm" style={{ color: t.fgMuted }}>
                 {s.body}
               </p>
             </div>

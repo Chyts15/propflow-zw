@@ -61,12 +61,13 @@ export async function createPropertyForOrg(
     city: string;
     province: string;
     type: PropertyType;
-    totalUnits: number;
+    /** Only the seed passes this. A new property has no units, and createUnitForOrg keeps the count true. */
+    totalUnits?: number;
     primaryCurrency: Currency;
     description?: string;
   },
 ) {
-  return prisma.property.create({ data: { ...data, orgId, ownerId } });
+  return prisma.property.create({ data: { ...data, totalUnits: data.totalUnits ?? 0, orgId, ownerId } });
 }
 
 export async function getPropertyForOrg(orgId: string, propertyId: string) {
@@ -137,9 +138,24 @@ export async function createUnitForOrg(
     description?: string;
   },
 ) {
-  const property = await prisma.property.findFirst({ where: { id: propertyId, orgId }, select: { id: true } });
+  const property = await prisma.property.findFirst({ where: { id: propertyId, orgId }, select: { id: true, name: true } });
   if (!property) throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
-  return prisma.unit.create({ data: { ...data, propertyId } });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.create({ data: { ...data, propertyId } });
+      await syncTotalUnits(tx, propertyId);
+      return unit;
+    });
+  } catch (err) {
+    // (propertyId, unitNumber) is unique. Adding "04" twice used to surface as a raw database error.
+    if ((err as { code?: string } | null)?.code === "P2002") {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: `${property.name} already has a Unit ${data.unitNumber}. Use a different unit number.`,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function getUnitForOrg(orgId: string, unitId: string) {
@@ -170,8 +186,19 @@ export async function updateUnitForOrg(
 }
 
 export async function deleteUnitForOrg(orgId: string, unitId: string) {
-  const { count } = await prisma.unit.deleteMany({ where: { id: unitId, property: { orgId } } });
-  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+  const unit = await prisma.unit.findFirst({ where: { id: unitId, property: { orgId } }, select: { propertyId: true } });
+  if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+  await prisma.$transaction(async (tx) => {
+    await tx.unit.delete({ where: { id: unitId } });
+    await syncTotalUnits(tx, unit.propertyId);
+  });
+}
+
+// Property.totalUnits is the number of units the property really has. It used to be a number the
+// landlord typed in, which nothing created or checked, so it is now kept equal to the count.
+async function syncTotalUnits(tx: Prisma.TransactionClient, propertyId: string) {
+  const totalUnits = await tx.unit.count({ where: { propertyId } });
+  await tx.property.update({ where: { id: propertyId }, data: { totalUnits } });
 }
 
 export async function getComplaintsForOrg(
@@ -767,6 +794,18 @@ export async function getVacantUnitsForOrg(orgId: string) {
     where: { property: { orgId }, isVacant: true },
     include: { property: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * The landlord's own vacant units among `unitIds`. This is the ownership check for invitations
+ * read back from Clerk: an invitation is only this org's if its unit is returned here.
+ */
+export async function getVacantUnitsByIdsForOrg(orgId: string, unitIds: string[]) {
+  if (unitIds.length === 0) return [];
+  return prisma.unit.findMany({
+    where: { id: { in: unitIds }, isVacant: true, property: { orgId } },
+    select: { id: true, unitNumber: true, property: { select: { name: true } } },
   });
 }
 

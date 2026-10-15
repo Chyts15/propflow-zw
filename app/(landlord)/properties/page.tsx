@@ -4,9 +4,10 @@ import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getPropertiesForOrg } from "@/lib/db/scoped";
 import { parseCursor } from "@/lib/pagination";
+import { occupancySummary } from "@/lib/unit-display";
 import { ListPager } from "@/components/landlord/list-pager";
 import { AddPropertyDialog } from "@/components/landlord/add-property-dialog";
-import { LANDLORD_DARK } from "@/components/landlord/theme";
+import { FOCUS_RING, LANDLORD_DARK } from "@/components/landlord/theme";
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
   const cursor = parseCursor((await searchParams).cursor);
@@ -15,42 +16,42 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   // The list is paged: rows past the first page used to be unreachable. The cursor is in the URL.
   const { items: properties, nextCursor } = await getPropertiesForOrg(user.orgId!, { cursor });
   const t = LANDLORD_DARK;
+  const firstRun = properties.length === 0 && !cursor;
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-3xl font-extrabold" style={{ color: t.fg }}>
+    <div className="mx-auto max-w-6xl p-6 sm:p-8">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="font-heading text-2xl font-extrabold sm:text-3xl" style={{ color: t.fg }}>
           Properties
         </h1>
-        <AddPropertyDialog />
+        {/* On a first visit the empty state below carries the one call to action. */}
+        {!firstRun && <AddPropertyDialog />}
       </div>
 
       {properties.length === 0 && cursor ? (
         <p className="mt-8 text-sm" style={{ color: t.fgMuted }}>
           There are no more properties.
         </p>
-      ) : properties.length === 0 ? (
-        <div
-          className="mt-8 rounded-2xl border border-dashed p-8 text-center"
-          style={{ borderColor: t.cardBorder }}
-        >
+      ) : firstRun ? (
+        <div className="mt-8 rounded-2xl border border-dashed p-6 text-center sm:p-8" style={{ borderColor: t.cardBorder }}>
           <p className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
             No properties yet
           </p>
-          <p className="mt-1 text-sm" style={{ color: t.fgMuted }}>
-            Add your first property to start tracking units and rent.
+          <p className="mx-auto mt-1 max-w-md text-sm" style={{ color: t.fgMuted }}>
+            Add your first property, then its units and their rent. After that you can invite your tenants.
           </p>
+          <div className="mt-5 flex justify-center">
+            <AddPropertyDialog fullLabel />
+          </div>
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {properties.map((p) => {
-            const occupied = p.units.filter((u) => !u.isVacant).length;
-            const pct = p.units.length === 0 ? 0 : Math.round((occupied / p.units.length) * 100);
+            const occupancy = occupancySummary(p.units);
             return (
-              <Link
+              <div
                 key={p.id}
-                href={`/properties/${p.id}`}
-                className="rounded-2xl p-5 transition hover:brightness-110"
+                className="relative rounded-2xl p-5 transition hover:brightness-110"
                 style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}
               >
                 <div className="flex items-start justify-between">
@@ -67,22 +68,45 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                     {p.primaryCurrency}
                   </span>
                 </div>
+                {/* The name link stretches over the whole card; the Add unit link below sits above it. */}
                 <p className="font-heading mt-4 text-lg font-extrabold" style={{ color: t.fg }}>
-                  {p.name}
+                  <Link
+                    href={`/properties/${p.id}`}
+                    className={`${FOCUS_RING} rounded after:absolute after:inset-0 after:rounded-2xl`}
+                  >
+                    {p.name}
+                  </Link>
                 </p>
                 <p className="mt-1 text-sm" style={{ color: t.fgMuted }}>
                   {p.suburb}, {p.city}
                 </p>
-                <div className="mt-4 flex items-center justify-between text-xs" style={{ color: t.fgMuted }}>
-                  <span>
-                    {occupied}/{p.units.length} occupied
-                  </span>
-                  <span style={{ color: t.fg }}>{pct}%</span>
-                </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: t.cardBorder }}>
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: t.accent }} />
-                </div>
-              </Link>
+                {occupancy.kind === "empty" ? (
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="text-xs" style={{ color: t.fgMuted }}>
+                      No units yet
+                    </span>
+                    <Link
+                      href={`/properties/${p.id}?addUnit=1`}
+                      className={`${FOCUS_RING} press relative z-10 inline-flex min-h-11 items-center rounded-2xl px-4 font-mono text-xs`}
+                      style={{ border: "1px solid rgba(200,82,42,0.4)", color: t.accentLight }}
+                    >
+                      ADD UNIT →
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 flex items-center justify-between text-xs" style={{ color: t.fgMuted }}>
+                      <span>
+                        {occupancy.occupied}/{occupancy.total} occupied
+                      </span>
+                      <span style={{ color: t.fg }}>{occupancy.pct}%</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: t.cardBorder }}>
+                      <div className="h-full rounded-full" style={{ width: `${occupancy.pct}%`, backgroundColor: t.accent }} />
+                    </div>
+                  </>
+                )}
+              </div>
             );
           })}
         </div>
