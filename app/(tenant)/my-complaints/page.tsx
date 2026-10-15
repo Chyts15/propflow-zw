@@ -3,16 +3,9 @@ import { auth } from "@clerk/nextjs/server";
 import { Plus } from "lucide-react";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getComplaintsForTenant } from "@/lib/db/scoped";
-import { TENANT_DARK, COMPLAINT_STATUS_TONE } from "@/components/tenant/theme";
+import { TENANT_DARK, TENANT_FOCUS_RING, COMPLAINT_STATUS_TONE } from "@/components/tenant/theme";
 import { formatRelativeTime } from "@/lib/utils";
-
-const STATUS_LABEL: Record<string, string> = {
-  OPEN: "Open",
-  IN_PROGRESS: "In progress",
-  PENDING_PARTS: "Pending parts",
-  RESOLVED: "Resolved",
-  CLOSED: "Closed",
-};
+import { COMPLAINT_STATUS_LABEL } from "@/lib/tenant-rent-view";
 
 export default async function TenantComplaintsPage() {
   const { userId } = await auth();
@@ -28,10 +21,10 @@ export default async function TenantComplaintsPage() {
         </h1>
         <Link
           href="/my-complaints/new"
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 font-mono text-xs font-medium text-white"
+          className={`press flex min-h-11 items-center gap-1.5 rounded-lg px-4 font-mono text-xs font-medium text-white ${TENANT_FOCUS_RING}`}
           style={{ backgroundColor: t.accent }}
         >
-          <Plus className="h-4 w-4" /> REPORT
+          <Plus className="h-4 w-4" aria-hidden="true" /> REPORT
         </Link>
       </div>
 
@@ -41,7 +34,7 @@ export default async function TenantComplaintsPage() {
             No complaints yet
           </p>
           <p className="mt-1 text-sm" style={{ color: t.fgMuted }}>
-            Report an issue and we&apos;ll SMS you when it&apos;s updated.
+            Report an issue and you can follow it here.
           </p>
         </div>
       ) : (
@@ -49,7 +42,7 @@ export default async function TenantComplaintsPage() {
           {complaints.map((c) => (
             <div key={c.id} className="rounded-2xl p-4" style={{ backgroundColor: COMPLAINT_STATUS_TONE[c.status] }}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">{STATUS_LABEL[c.status]}</p>
+                <p className="text-sm font-semibold text-white">{COMPLAINT_STATUS_LABEL[c.status] ?? "Open"}</p>
                 <span className="text-xs text-white/60">{formatRelativeTime(c.createdAt)}</span>
               </div>
               <p className="text-sm font-medium text-white">{c.title}</p>

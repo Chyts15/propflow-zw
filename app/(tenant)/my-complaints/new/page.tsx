@@ -3,9 +3,13 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Wrench, Zap, Droplets, Shield, Building2, MoreHorizontal, Camera, X, Loader2 } from "lucide-react";
+import { Wrench, Zap, Droplets, Shield, Building2, MoreHorizontal, Camera, X, RotateCw } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { TENANT_DARK } from "@/components/tenant/theme";
+import { tenantErrorMessage } from "@/lib/tenant-errors";
+import { rejectSource } from "@/lib/image-upload";
+import { Bone } from "@/components/tenant/skeletons";
+import { TENANT_DARK, TENANT_FOCUS_RING } from "@/components/tenant/theme";
+import { useImageUploads } from "@/components/tenant/use-image-uploads";
 
 const CATEGORIES = [
   { value: "Plumbing", icon: Wrench },
@@ -27,50 +31,31 @@ export default function NewComplaintPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [accessOk, setAccessOk] = useState<boolean | null>(null);
-  const [photos, setPhotos] = useState<{ url: string; uploading: boolean }[]>([]);
 
   const getUploadUrl = trpc.complaints.getUploadUrl.useMutation();
-  const createComplaint = trpc.complaints.create.useMutation({
-    onSuccess: () => {
-      toast.success("Complaint submitted — we'll SMS you when it's updated.");
-      router.push("/my-complaints");
-    },
-    onError: (err) => toast.error(err.message),
+  const { items: photos, add, retry, remove } = useImageUploads({
+    requestUploadUrl: (input) => getUploadUrl.mutateAsync(input),
+    max: MAX_PHOTOS,
   });
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const createComplaint = trpc.complaints.create.useMutation({
+    onSuccess: () => {
+      toast.success("Complaint sent. You can follow it in your complaints list.");
+      router.push("/my-complaints");
+    },
+    onError: (err) => toast.error(tenantErrorMessage(err)),
+  });
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || photos.length >= MAX_PHOTOS) return;
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      toast.error("Only JPEG or PNG photos are supported");
+    e.target.value = ""; // so choosing the same photo again still fires
+    if (!file) return;
+    const problem = rejectSource(file);
+    if (problem) {
+      toast.error(problem);
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Photo must be under 5MB");
-      return;
-    }
-
-    const placeholder = { url: "", uploading: true };
-    setPhotos((p) => [...p, placeholder]);
-    const index = photos.length;
-
-    try {
-      const { uploadUrl, publicUrl } = await getUploadUrl.mutateAsync({
-        contentType: file.type as "image/jpeg" | "image/png",
-        contentLength: file.size,
-      });
-      const res = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!res.ok) throw new Error("Upload failed");
-      setPhotos((p) => p.map((ph, i) => (i === index ? { url: publicUrl, uploading: false } : ph)));
-    } catch (err) {
-      setPhotos((p) => p.filter((_, i) => i !== index));
-      toast.error(err instanceof Error ? err.message : "Upload failed");
-    }
-  }
-
-  function removePhoto(index: number) {
-    setPhotos((p) => p.filter((_, i) => i !== index));
+    add(file);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -79,15 +64,18 @@ export default function NewComplaintPage() {
     if (!title.trim()) return toast.error("Add a short title");
     if (!description.trim()) return toast.error("Describe the issue");
     if (accessOk === null) return toast.error("Let us know if the landlord needs access");
-    if (photos.some((p) => p.uploading)) return toast.error("Wait for photos to finish uploading");
+    if (photos.some((p) => p.status === "preparing" || p.status === "uploading")) return toast.error("Wait for your photos to finish sending");
+    if (photos.some((p) => p.status === "failed")) return toast.error("A photo didn't send. Tap it to retry, or remove it.");
 
     createComplaint.mutate({
       category,
       title,
       description: `${description}${accessOk ? "" : "\n\n(Tenant declined access permission.)"}`,
-      imageUrls: photos.map((p) => p.url),
+      imageUrls: photos.flatMap((p) => (p.publicUrl ? [p.publicUrl] : [])),
     });
   }
+
+  const failed = photos.find((p) => p.status === "failed");
 
   return (
     <div className="mx-auto max-w-2xl p-6 sm:p-8">
@@ -95,7 +83,7 @@ export default function NewComplaintPage() {
         Report an Issue
       </h1>
       <p className="mt-1 text-sm" style={{ color: t.fgMuted }}>
-        We&apos;ll SMS you when your complaint is updated.
+        Tell us what&apos;s wrong. Your landlord sees it in their PropFlow complaints list, and you can follow it in yours.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-6">
@@ -109,14 +97,15 @@ export default function NewComplaintPage() {
                 key={value}
                 type="button"
                 onClick={() => setCategory(value)}
-                className="flex flex-col items-center gap-2 rounded-2xl p-4"
+                aria-pressed={category === value}
+                className={`press flex min-h-11 flex-col items-center gap-2 rounded-2xl p-4 ${TENANT_FOCUS_RING}`}
                 style={{
                   backgroundColor: t.cardBg,
                   border: `1.5px solid ${category === value ? t.accent : t.cardBorder}`,
                   color: category === value ? t.accentLight : t.fgMuted,
                 }}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className="h-5 w-5" aria-hidden="true" />
                 <span className="text-center text-xs">{value}</span>
               </button>
             ))}
@@ -132,7 +121,8 @@ export default function NewComplaintPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Water pump not working"
-            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+            maxLength={200}
+            className={`min-h-11 w-full rounded-lg px-3 text-sm ${TENANT_FOCUS_RING}`}
             style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }}
           />
         </div>
@@ -146,8 +136,9 @@ export default function NewComplaintPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
+            maxLength={2000}
             placeholder="No water pressure since Monday morning"
-            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+            className={`w-full rounded-lg px-3 py-2.5 text-sm ${TENANT_FOCUS_RING}`}
             style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }}
           />
         </div>
@@ -157,42 +148,72 @@ export default function NewComplaintPage() {
             PHOTOS (UP TO {MAX_PHOTOS})
           </p>
           <div className="flex flex-wrap gap-3">
-            {photos.map((p, i) => (
-              <div
-                key={i}
-                className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg"
-                style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}
-              >
-                {p.uploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: t.fgMuted }} />
-                ) : (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt="" className="h-full w-full object-cover" />
+            {photos.map((p) => {
+              const pct = Math.round(p.progress * 100);
+              return (
+                <div
+                  key={p.id}
+                  className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg"
+                  style={{ backgroundColor: t.cardBg, border: `1px solid ${p.status === "failed" ? "#f87171" : t.cardBorder}` }}
+                >
+                  {p.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- local object URL of the chosen photo, not a remote image
+                    <img src={p.previewUrl} alt="" className={`h-full w-full object-cover ${p.status === "failed" ? "opacity-40" : ""}`} />
+                  ) : (
+                    <Bone className="h-full w-full rounded-none" />
+                  )}
+
+                  {p.status === "uploading" && (
+                    <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 pb-1 pt-0.5" role="status" aria-label={`Sending photo, ${pct}%`}>
+                      <p className="text-center font-mono text-[10px] text-white">{pct}%</p>
+                      <div className="h-1 overflow-hidden rounded-full bg-white/20">
+                        <div
+                          className="h-full w-full origin-left rounded-full transition-transform duration-200 motion-reduce:transition-none"
+                          style={{ backgroundColor: t.accentLight, transform: `scaleX(${p.progress})` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {p.status === "failed" && p.retryable && (
                     <button
                       type="button"
-                      onClick={() => removePhoto(i)}
-                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
+                      onClick={() => retry(p.id)}
+                      aria-label="Retry sending this photo"
+                      className={`absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-white ${TENANT_FOCUS_RING}`}
                     >
-                      <X className="h-3 w-3" />
+                      <RotateCw className="h-5 w-5" aria-hidden="true" />
+                      <span className="font-mono text-[10px]">RETRY</span>
                     </button>
-                  </>
-                )}
-              </div>
-            ))}
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => remove(p.id)}
+                    aria-label="Remove this photo"
+                    className={`absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white after:absolute after:-inset-2 after:content-[''] ${TENANT_FOCUS_RING}`}
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
             {photos.length < MAX_PHOTOS && (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg"
+                className={`press flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg ${TENANT_FOCUS_RING}`}
                 style={{ backgroundColor: t.cardBg, border: `1px dashed ${t.cardBorder}`, color: t.fgMuted }}
               >
-                <Camera className="h-5 w-5" />
+                <Camera className="h-5 w-5" aria-hidden="true" />
                 <span className="text-[10px]">Add</span>
               </button>
             )}
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileChange} className="hidden" />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
           </div>
+          <p className="mt-2 text-xs" style={{ color: failed ? "#f87171" : t.fgFaint }} role={failed ? "alert" : undefined}>
+            {failed?.error ?? "Photos are shrunk to about 300 KB before sending, so they go through on slow data."}
+          </p>
         </div>
 
         <div>
@@ -208,7 +229,8 @@ export default function NewComplaintPage() {
                 key={opt.label}
                 type="button"
                 onClick={() => setAccessOk(opt.value)}
-                className="flex-1 rounded-lg py-2.5 text-sm font-medium"
+                aria-pressed={accessOk === opt.value}
+                className={`press min-h-11 flex-1 rounded-lg text-sm font-medium ${TENANT_FOCUS_RING}`}
                 style={{
                   backgroundColor: accessOk === opt.value ? t.accent : t.cardBg,
                   border: `1px solid ${accessOk === opt.value ? t.accent : t.cardBorder}`,
@@ -224,7 +246,7 @@ export default function NewComplaintPage() {
         <button
           type="submit"
           disabled={createComplaint.isPending}
-          className="w-full rounded-lg py-3 font-mono text-sm font-medium text-white disabled:opacity-50"
+          className={`press min-h-12 w-full rounded-lg font-mono text-sm font-medium text-white disabled:opacity-50 ${TENANT_FOCUS_RING}`}
           style={{ backgroundColor: t.accent }}
         >
           {createComplaint.isPending ? "Submitting…" : "Submit"}

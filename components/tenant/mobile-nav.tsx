@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Home, Receipt, MessageSquare, User } from "lucide-react";
-import { TENANT_DARK } from "@/components/tenant/theme";
+import { Home, Receipt, MessageSquare, User } from "lucide-react";
+import { TENANT_DARK, TENANT_FOCUS_RING } from "@/components/tenant/theme";
 
 const TABS = [
   { href: "/home", label: "Home", icon: Home },
@@ -16,7 +16,7 @@ export function TenantMobileTopBar({ tenantName, unitLabel }: { tenantName: stri
   const t = TENANT_DARK;
   return (
     <header
-      className="fixed inset-x-0 top-0 z-20 flex h-14 items-center justify-between px-4 sm:hidden"
+      className="fixed inset-x-0 top-0 z-20 flex h-14 items-center px-4 sm:hidden"
       style={{ backgroundColor: t.sidebarBg, borderBottom: `1px solid ${t.cardBorder}` }}
     >
       <span className="flex items-center gap-2 overflow-hidden">
@@ -33,14 +33,6 @@ export function TenantMobileTopBar({ tenantName, unitLabel }: { tenantName: stri
           </span>
         </span>
       </span>
-      <button
-        type="button"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-        style={{ color: t.fgMuted }}
-        aria-label="Notifications"
-      >
-        <Bell className="h-4 w-4" />
-      </button>
     </header>
   );
 }
@@ -60,10 +52,11 @@ export function TenantMobileTabBar() {
           <Link
             key={href}
             href={href}
-            className="press flex flex-1 flex-col items-center justify-center gap-0.5"
+            aria-current={active ? "page" : undefined}
+            className={`press flex flex-1 flex-col items-center justify-center gap-0.5 ${TENANT_FOCUS_RING}`}
             style={{ color: active ? t.accentLight : t.fgMuted }}
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-5 w-5" aria-hidden="true" />
             <span className="text-[10px]">{label}</span>
           </Link>
         );

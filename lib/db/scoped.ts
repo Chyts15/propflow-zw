@@ -956,6 +956,14 @@ export async function getComplaintsForTenant(tenantId: string, { cursor }: Curso
   return paginate(items);
 }
 
+// The in-app SMS toggle on the tenant profile is the authoritative opt-out (CLAUDE.md § Africa-
+// First); sendSms checks User.smsOptIn at send time. Scoped to the tenant's own TENANT row.
+export async function setSmsOptInForTenant(tenantId: string, smsOptIn: boolean) {
+  const { count } = await prisma.user.updateMany({ where: { id: tenantId, role: "TENANT" }, data: { smsOptIn } });
+  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Profile not found" });
+  return { smsOptIn };
+}
+
 // ---- Billing (Paynow subscription + SMS bundles) — CLAUDE.md Security First:
 // financial state changes always write a BillingEvent, webhooks always
 // re-poll + check idempotency before mutating Organization. ----------------
