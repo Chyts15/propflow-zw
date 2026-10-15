@@ -203,14 +203,26 @@ async function syncTotalUnits(tx: Prisma.TransactionClient, propertyId: string) 
 
 export async function getComplaintsForOrg(
   orgId: string,
-  { cursor, statuses }: Cursor & { statuses?: ComplaintStatus[] } = {},
+  {
+    cursor,
+    statuses,
+    order = "urgency",
+  }: Cursor & {
+    statuses?: readonly ComplaintStatus[];
+    /** "urgency": most urgent first (the queue). "recent": most recently touched first (resolved ones). */
+    order?: "urgency" | "recent";
+  } = {},
 ) {
   const items = await prisma.complaint.findMany({
-    where: { unit: { property: { orgId } }, ...(statuses ? { status: { in: statuses } } : {}) },
+    where: { unit: { property: { orgId } }, ...(statuses ? { status: { in: [...statuses] } } : {}) },
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-    include: { unit: { select: { unitNumber: true, propertyId: true } } },
+    // The id is the last tiebreaker so the order is total and a cursor always lands on one row.
+    orderBy:
+      order === "recent"
+        ? [{ updatedAt: "desc" }, { id: "desc" }]
+        : [{ priority: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    include: { unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } } },
   });
 
   // Complaint.tenantId has no Prisma relation (matches the original schema
@@ -228,7 +240,7 @@ export async function getComplaintForOrg(orgId: string, complaintId: string) {
   const complaint = await prisma.complaint.findFirst({
     where: { id: complaintId, unit: { property: { orgId } } },
     include: {
-      unit: { select: { unitNumber: true, propertyId: true } },
+      unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } },
       messages: { orderBy: { createdAt: "asc" } },
     },
   });

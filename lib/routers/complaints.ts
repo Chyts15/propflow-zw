@@ -13,16 +13,24 @@ import { TRPCError } from "@trpc/server";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
 import { complaintPhotoPrefix, firstForeignPhoto } from "@/lib/storage/upload-url";
 import { landlordReplyPhotos } from "@/lib/complaint-photos";
+import { SCOPE_QUERY } from "@/lib/complaint-queue";
 import { uploadRateLimit } from "@/lib/rate-limit";
+import type { ComplaintStatus } from "@/generated/prisma/client";
 
 const STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_PARTS", "RESOLVED", "CLOSED"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 const CONTENT_TYPES = ["image/jpeg", "image/png", "application/pdf"] as const;
 
 export const complaintsRouter = router({
+  // The landlord's queue, one feed at a time: ACTIVE (open, in progress, pending parts; most
+  // urgent first) or RESOLVED (resolved and closed; most recently touched first). Resolved
+  // complaints never share a page with active ones, so they cannot push an open one off page one.
   list: landlordProcedure
-    .input(z.object({ cursor: z.string().cuid().optional() }).optional())
-    .query(({ ctx, input }) => getComplaintsForOrg(ctx.orgId, { cursor: input?.cursor })),
+    .input(z.object({ scope: z.enum(["ACTIVE", "RESOLVED"]), cursor: z.string().cuid().optional() }))
+    .query(({ ctx, input }) => {
+      const { statuses, order } = SCOPE_QUERY[input.scope];
+      return getComplaintsForOrg(ctx.orgId, { cursor: input.cursor, statuses: statuses as readonly ComplaintStatus[], order });
+    }),
 
   byId: landlordProcedure
     .input(z.object({ complaintId: z.string().cuid() }))
@@ -37,7 +45,8 @@ export const complaintsRouter = router({
     .mutation(({ ctx, input }) => updateComplaintPriority(ctx.orgId, input.complaintId, input.priority)),
 
   reply: landlordWriteProcedure
-    .input(z.object({ complaintId: z.string().cuid(), body: z.string().min(1).max(2000), imageUrls: landlordReplyPhotos }))
+    // Trimmed first, so a reply of only spaces or line breaks is refused instead of saved.
+    .input(z.object({ complaintId: z.string().cuid(), body: z.string().trim().min(1).max(2000), imageUrls: landlordReplyPhotos }))
     .mutation(({ ctx, input }) =>
       addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls),
     ),

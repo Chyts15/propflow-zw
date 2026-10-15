@@ -1,27 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import toast from "react-hot-toast";
-import { Clock, Send, MessageSquareWarning } from "lucide-react";
+import { ArrowLeft, ChevronDown, Clock, MessageSquareWarning, Phone, Send, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { LANDLORD_DARK, PRIORITY_GLOW } from "@/components/landlord/theme";
+import {
+  COMPLAINT_STATUS_LABEL,
+  COMPLAINT_STATUS_TONE,
+  FOCUS_RING,
+  LANDLORD_DARK,
+  PRIORITY_LABEL,
+  PRIORITY_TONE,
+} from "@/components/landlord/theme";
 import { ProofBadge } from "@/components/landlord/proof-lightbox";
+import { isResolved } from "@/lib/complaint-queue";
+import {
+  PRIORITY_VALUES,
+  REPLY_MAX,
+  STATUS_VALUES,
+  dayBreaks,
+  formatClock,
+  isSendable,
+  mergeMessages,
+  needsUndo,
+  parsePriority,
+  parseStatus,
+  restoreDraft,
+  shouldSendOnKey,
+  slaLabel,
+  slaStatus,
+  telHref,
+  type ComplaintPriorityValue,
+  type ComplaintStatusValue,
+  type ThreadMessage,
+} from "@/lib/complaint-thread";
+import { formatLongDate } from "@/lib/dates";
+import { formatZwPhone } from "@/lib/phone";
+import { friendlyMessage } from "@/lib/trpc-error";
 
-const STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_PARTS", "RESOLVED", "CLOSED"] as const;
-const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
-const SLA_HOURS: Record<string, number> = { CRITICAL: 24, HIGH: 48, MEDIUM: 72, LOW: 168 };
+const t = LANDLORD_DARK;
+const BONE = "rgba(255,255,255,0.07)";
+const OWN_BUBBLE = "#9a3a1a";
+const NEUTRAL_TONE = { bg: "rgba(255,255,255,0.1)", fg: "rgba(255,255,255,0.7)" };
 
-function slaLabel(createdAt: Date, priority: string, resolved: boolean) {
-  if (resolved) return null;
-  const hours = SLA_HOURS[priority] ?? 72;
-  const deadline = new Date(createdAt.getTime() + hours * 60 * 60 * 1000);
-  const remainingMs = deadline.getTime() - Date.now();
-  const overdue = remainingMs < 0;
-  const absHours = Math.abs(Math.round(remainingMs / (60 * 60 * 1000)));
-  const text = absHours < 24 ? `${absHours}h` : `${Math.round(absHours / 24)}d`;
-  return { overdue, text };
-}
+const STATUS_OPTIONS = STATUS_VALUES.map((value) => ({ value, label: COMPLAINT_STATUS_LABEL[value] }));
+const PRIORITY_OPTIONS = PRIORITY_VALUES.map((value) => ({ value, label: PRIORITY_LABEL[value] }));
 
 type Complaint = {
   id: string;
@@ -31,176 +55,499 @@ type Complaint = {
   status: string;
   priority: string;
   createdAt: Date;
+  resolvedAt: Date | null;
   imageUrls: string[];
-  unit: { unitNumber: string };
+  unit: { unitNumber: string; property: { name: string } };
   tenantName: string;
   tenantPhone: string | null;
-  messages: { id: string; senderRole: string; senderName: string; body: string; imageUrls: string[]; createdAt: Date }[];
+  messages: ThreadMessage[];
 };
 
-export function ComplaintThread({ complaint }: { complaint: Complaint }) {
-  const t = LANDLORD_DARK;
+/** A reply sent from this screen. It shows at once and is swapped for the saved one when the server answers. */
+type LocalMessage = ThreadMessage & { key: string; sending: boolean };
+
+type Retry =
+  | { type: "reply" }
+  | { type: "status"; next: ComplaintStatusValue }
+  | { type: "priority"; next: ComplaintPriorityValue };
+
+type Notice =
+  | { kind: "undo"; previous: string }
+  | { kind: "error"; message: string; retry?: Retry; billing?: boolean };
+
+function failure(
+  err: { message: string; data?: { code?: string } | null },
+  fallback: string,
+  retry: Retry,
+): Notice {
+  const code = err.data?.code;
+  // A forbidden or missing complaint will not be fixed by trying again.
+  const final = code === "FORBIDDEN" || code === "NOT_FOUND";
+  return { kind: "error", message: friendlyMessage(err, fallback), retry: final ? undefined : retry, billing: code === "FORBIDDEN" };
+}
+
+/** The shape of the thread while it loads: same header, bubbles and composer heights. */
+export function ComplaintThreadSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="flex h-full min-h-0 flex-col">
+      <span className="sr-only">Loading complaint…</span>
+      <div className="shrink-0 px-3 pb-3 pt-2 sm:px-5 sm:pt-4" style={{ backgroundColor: t.sidebarBg }}>
+        <div className="flex h-11 items-center gap-3">
+          <div aria-hidden="true" className="h-9 w-9 rounded-full sm:hidden motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+          <div className="flex-1">
+            <div aria-hidden="true" className="h-5 w-40 rounded-md motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+            <div aria-hidden="true" className="mt-1.5 h-3 w-48 rounded-md motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-md">
+          {[0, 1].map((i) => (
+            <div key={i}>
+              <div aria-hidden="true" className="mb-1 h-3 w-14 rounded-md motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+              <div aria-hidden="true" className="h-11 rounded-2xl motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+            </div>
+          ))}
+        </div>
+        <div aria-hidden="true" className="mt-2 h-6 w-44 rounded-md motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+      </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-hidden px-3 py-4 sm:px-5">
+        <div aria-hidden="true" className="h-28 w-4/5 rounded-2xl motion-safe:animate-pulse sm:w-96" style={{ backgroundColor: t.cardBg }} />
+        <div aria-hidden="true" className="ml-auto h-16 w-3/5 rounded-2xl motion-safe:animate-pulse sm:w-72" style={{ backgroundColor: BONE }} />
+        <div aria-hidden="true" className="h-14 w-2/3 rounded-2xl motion-safe:animate-pulse sm:w-80" style={{ backgroundColor: t.cardBg }} />
+      </div>
+      <div className="flex shrink-0 items-end gap-2 px-3 py-3 sm:px-5" style={{ backgroundColor: t.sidebarBg }}>
+        <div aria-hidden="true" className="h-11 flex-1 rounded-2xl motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+        <div aria-hidden="true" className="h-11 w-11 rounded-2xl motion-safe:animate-pulse" style={{ backgroundColor: BONE }} />
+      </div>
+    </div>
+  );
+}
+
+function ToneSelect<V extends string>({
+  id,
+  label,
+  value,
+  tone,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  tone: { bg: string; fg: string };
+  options: { value: V; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="mb-1 block font-mono text-[11px] uppercase tracking-wide" style={{ color: t.fgMuted }}>
+        {label}
+      </label>
+      {/* A native select: on a phone it opens the system picker, which is a full-size sheet within
+          thumb reach, costs no JavaScript, and works with the screen reader as is. The word shows
+          in the control, the tint only backs it up. */}
+      <div className="relative rounded-2xl" style={{ backgroundColor: tone.bg }}>
+        <select
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`min-h-11 w-full cursor-pointer appearance-none rounded-2xl bg-transparent py-2 pl-3 pr-9 font-mono text-xs uppercase ${FOCUS_RING}`}
+          style={{ color: tone.fg, colorScheme: "dark" }}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value} className="bg-[#1f130d] text-white">
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: tone.fg }} />
+      </div>
+    </div>
+  );
+}
+
+function Bubble({ mine, className = "", children }: { mine: boolean; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={`flex ${mine ? "justify-end" : "justify-start"} ${className}`}>
+      <div
+        className={`max-w-[85%] rounded-2xl p-3 sm:max-w-md ${mine ? "rounded-br-sm" : "rounded-bl-sm"}`}
+        style={
+          mine
+            ? { backgroundColor: OWN_BUBBLE, color: "#fff" }
+            : { backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function DayBreak({ label }: { label: string | null }) {
+  if (!label) return null;
+  return (
+    <p className="pt-1 text-center font-mono text-[11px] tracking-wide" style={{ color: t.fgMuted }}>
+      {label}
+    </p>
+  );
+}
+
+export function ComplaintThread({ complaint, viewerName }: { complaint: Complaint; viewerName: string }) {
   const router = useRouter();
-  const [reply, setReply] = useState("");
+  const utils = trpc.useUtils();
+  const listRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  const localSeq = useRef(0);
 
-  const updateStatus = trpc.complaints.updateStatus.useMutation({
-    onSuccess: () => {
-      toast.success("Status updated");
-      router.refresh();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-  const updatePriority = trpc.complaints.updatePriority.useMutation({
-    onSuccess: () => router.refresh(),
-    onError: (err) => toast.error(err.message),
-  });
-  const sendReply = trpc.complaints.reply.useMutation({
-    onSuccess: () => {
-      setReply("");
-      router.refresh();
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  const [draft, setDraft] = useState("");
+  const [local, setLocal] = useState<LocalMessage[]>([]);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  // Status and priority show the tap at once. The override is thrown away if the server refuses
+  // the change, and when fresh props arrive (they then carry the truth).
+  const [override, setOverride] = useState<{ status?: string; priority?: string }>({});
+  const [seen, setSeen] = useState({ status: complaint.status, priority: complaint.priority });
+  const [flash, setFlash] = useState(0);
 
-  const resolved = complaint.status === "RESOLVED" || complaint.status === "CLOSED";
-  const sla = slaLabel(complaint.createdAt, complaint.priority, resolved);
+  if (seen.status !== complaint.status || seen.priority !== complaint.priority) {
+    setSeen({ status: complaint.status, priority: complaint.priority });
+    setOverride({});
+  }
+
+  const status = override.status ?? complaint.status;
+  const priority = override.priority ?? complaint.priority;
+  const done = isResolved(status);
+  const sla = slaStatus(complaint.createdAt, priority, done, new Date());
+  const phoneHref = telHref(complaint.tenantPhone);
+  const phoneText = complaint.tenantPhone ? formatZwPhone(complaint.tenantPhone) : null;
+  const firstName = complaint.tenantName.split(" ")[0];
+
+  const updateStatus = trpc.complaints.updateStatus.useMutation();
+  const updatePriority = trpc.complaints.updatePriority.useMutation();
+  const sendReply = trpc.complaints.reply.useMutation();
+
+  const messages = mergeMessages(complaint.messages, local);
+  const breaks = dayBreaks([complaint.createdAt, ...messages.map((m) => m.createdAt)]);
+
+  // Newest at the bottom, in view, as in any chat.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  // An undo is on offer for a few seconds, then the status is simply settled.
+  useEffect(() => {
+    if (notice?.kind !== "undo") return;
+    const timer = window.setTimeout(() => setNotice((n) => (n === notice ? null : n)), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  function changeStatus(next: ComplaintStatusValue, isUndo = false) {
+    if (updateStatus.isPending || next === status) return;
+    const previous = status;
+    setOverride((o) => ({ ...o, status: next }));
+    setNotice(!isUndo && needsUndo(next) ? { kind: "undo", previous } : null);
+    updateStatus.mutate(
+      { complaintId: complaint.id, status: next },
+      {
+        onSuccess: () => {
+          setFlash((n) => n + 1);
+          // The queue's lists and the open-complaints count in the shell both depend on this.
+          void utils.complaints.list.invalidate();
+          router.refresh();
+        },
+        onError: (err) => {
+          setOverride((o) => ({ ...o, status: undefined }));
+          setNotice(failure(err, "Couldn't change the status.", { type: "status", next }));
+        },
+      },
+    );
+  }
+
+  function changePriority(next: ComplaintPriorityValue) {
+    if (updatePriority.isPending || next === priority) return;
+    setOverride((o) => ({ ...o, priority: next }));
+    setNotice(null);
+    updatePriority.mutate(
+      { complaintId: complaint.id, priority: next },
+      {
+        onSuccess: () => {
+          setFlash((n) => n + 1);
+          void utils.complaints.list.invalidate();
+          router.refresh();
+        },
+        onError: (err) => {
+          setOverride((o) => ({ ...o, priority: undefined }));
+          setNotice(failure(err, "Couldn't change the priority.", { type: "priority", next }));
+        },
+      },
+    );
+  }
+
+  function send() {
+    const body = draft.trim();
+    if (!isSendable(body) || sendReply.isPending) return;
+    localSeq.current += 1;
+    const key = `local-${localSeq.current}`;
+    setLocal((l) => [
+      ...l,
+      { id: key, key, senderRole: "LANDLORD", senderName: viewerName, body, imageUrls: [], createdAt: new Date(), sending: true },
+    ]);
+    setDraft("");
+    setNotice(null);
+    boxRef.current?.focus();
+    sendReply.mutate(
+      { complaintId: complaint.id, body, imageUrls: [] },
+      {
+        onSuccess: (saved) =>
+          setLocal((l) => l.map((m) => (m.key === key ? { ...m, id: saved.id, createdAt: saved.createdAt, sending: false } : m))),
+        onError: (err) => {
+          // Roll back: the bubble goes and the words go back in the box.
+          setLocal((l) => l.filter((m) => m.key !== key));
+          setDraft((current) => restoreDraft(current, body));
+          setNotice(failure(err, "Couldn't send your reply.", { type: "reply" }));
+        },
+      },
+    );
+  }
+
+  function retry(n: Extract<Notice, { kind: "error" }>) {
+    setNotice(null);
+    if (n.retry?.type === "reply") send();
+    else if (n.retry?.type === "status") changeStatus(n.retry.next);
+    else if (n.retry?.type === "priority") changePriority(n.retry.next);
+  }
+
+  function undo(previous: string) {
+    const prior = parseStatus(previous);
+    if (prior) changeStatus(prior, true);
+    else setNotice(null);
+  }
+
+  const statusTone = COMPLAINT_STATUS_TONE[status] ?? NEUTRAL_TONE;
+  const priorityTone = PRIORITY_TONE[priority] ?? NEUTRAL_TONE;
+  const canSend = isSendable(draft);
 
   return (
-    <div className="flex h-full min-h-screen flex-col">
-      <div className="p-5" style={{ borderBottom: `1px solid ${t.cardBorder}` }}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
-              Unit {complaint.unit.unitNumber} · {complaint.tenantName}
-            </p>
-            <p className="text-sm" style={{ color: t.fgMuted }}>
-              {complaint.title} · {complaint.category}
+    <div className="flex h-full min-h-0 flex-col" style={{ backgroundColor: t.mainBg }}>
+      <header className="shrink-0 px-3 pb-3 pt-2 sm:px-5 sm:pt-4" style={{ backgroundColor: t.sidebarBg }}>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/complaints"
+            aria-label="Back to all complaints"
+            className={`press -ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full sm:hidden ${FOCUS_RING}`}
+            style={{ color: t.fg }}
+          >
+            <ArrowLeft aria-hidden="true" className="h-5 w-5" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-heading truncate text-base font-extrabold sm:text-lg" style={{ color: t.fg }}>
+              {complaint.tenantName}
+            </h1>
+            <p className="truncate text-xs" style={{ color: t.fgMuted }}>
+              Unit {complaint.unit.unitNumber} · {complaint.unit.property.name}
             </p>
           </div>
-          {sla && (
-            <span
-              className="flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[11px]"
-              style={sla.overdue ? { backgroundColor: "rgba(220,38,38,0.15)", color: "#f87171" } : { backgroundColor: t.cardBg, color: t.fgMuted, border: `1px solid ${t.cardBorder}` }}
+          {phoneHref && (
+            <a
+              href={phoneHref}
+              aria-label={`Call ${complaint.tenantName}${phoneText ? ` on ${phoneText}` : ""}`}
+              className={`press flex h-11 shrink-0 items-center justify-center gap-2 rounded-full font-mono text-xs sm:px-4 w-11 sm:w-auto ${FOCUS_RING}`}
+              style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.accentLight }}
             >
-              <Clock className="h-3 w-3" />
-              {sla.overdue ? `Overdue ${sla.text}` : `${sla.text} left`}
-            </span>
+              <Phone aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden sm:inline">{phoneText}</span>
+            </a>
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1.5">
-            {STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => updateStatus.mutate({ complaintId: complaint.id, status: s })}
-                disabled={updateStatus.isPending}
-                className="rounded-full px-2.5 py-1 font-mono text-[11px]"
-                style={
-                  complaint.status === s
-                    ? { backgroundColor: t.accent, color: "#fff" }
-                    : { backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }
-                }
-              >
-                {s.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs" style={{ color: t.fgFaint }}>
-            ·
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {PRIORITIES.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => updatePriority.mutate({ complaintId: complaint.id, priority: p })}
-                disabled={updatePriority.isPending}
-                className="rounded-full px-2.5 py-1 font-mono text-[11px]"
-                style={
-                  complaint.priority === p
-                    ? { backgroundColor: PRIORITY_GLOW[p], color: "#fff" }
-                    : { backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }
-                }
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 space-y-4 overflow-y-auto p-5">
-        <div className="flex justify-start">
-          <div className="max-w-md rounded-2xl rounded-bl-sm p-3" style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
-            <p className="text-sm" style={{ color: t.fg }}>
-              {complaint.description}
-            </p>
-            {complaint.imageUrls.length > 0 && (
-              <div className="mt-2 flex gap-2">
-                {complaint.imageUrls.map((url, i) => (
-                  <ProofBadge
-                    key={url}
-                    proofImageUrl={url}
-                    label={`Photo ${i + 1}`}
-                    dialogTitle="Complaint photo"
-                    style={{ backgroundColor: "rgba(255,255,255,0.08)", color: t.fgMuted }}
-                  />
-                ))}
-              </div>
-            )}
-            <p className="mt-1 text-[10px]" style={{ color: t.fgFaint }}>
-              {complaint.tenantName}
-            </p>
-          </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-md">
+          <ToneSelect
+            id="complaint-status"
+            label="Status"
+            value={status}
+            tone={statusTone}
+            options={STATUS_OPTIONS}
+            onChange={(v) => {
+              const next = parseStatus(v);
+              if (next) changeStatus(next);
+            }}
+          />
+          <ToneSelect
+            id="complaint-priority"
+            label="Priority"
+            value={priority}
+            tone={priorityTone}
+            options={PRIORITY_OPTIONS}
+            onChange={(v) => {
+              const next = parsePriority(v);
+              if (next) changePriority(next);
+            }}
+          />
         </div>
 
-        {complaint.messages.length === 0 && (
-          <div className="flex items-center justify-center gap-2 py-6 text-sm" style={{ color: t.fgFaint }}>
-            <MessageSquareWarning className="h-4 w-4" /> No replies yet
+        {/* This line keeps its height whichever state it is in, so a status change moves nothing. */}
+        <p
+          key={flash}
+          suppressHydrationWarning
+          className={`mt-2 flex min-h-6 items-center gap-1.5 rounded-lg font-mono text-[11px] tracking-wide ${flash ? "row-flash" : ""}`}
+          style={{ color: sla?.overdue ? "#f87171" : t.fgMuted }}
+        >
+          <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          {sla
+            ? slaLabel(sla)
+            : `${COMPLAINT_STATUS_LABEL[status] ?? "Resolved"} ${complaint.resolvedAt ? formatLongDate(complaint.resolvedAt) : "just now"}`}
+        </p>
+      </header>
+
+      <div ref={listRef} role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5">
+        <DayBreak label={breaks[0]} />
+        <Bubble mine={false}>
+          <p className="text-sm font-semibold">{complaint.title}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm">{complaint.description}</p>
+          <p className="mt-2 font-mono text-[11px] uppercase tracking-wide" style={{ color: t.fgMuted }}>
+            {complaint.category}
+          </p>
+          {complaint.imageUrls.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {complaint.imageUrls.map((url, i) => (
+                <ProofBadge
+                  key={url}
+                  proofImageUrl={url}
+                  label={`Photo ${i + 1}`}
+                  dialogTitle="Complaint photo"
+                  size="comfortable"
+                  style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.85)" }}
+                />
+              ))}
+            </div>
+          )}
+          <p className="mt-2 font-mono text-[11px]" style={{ color: t.fgMuted }}>
+            {complaint.tenantName} · <time dateTime={complaint.createdAt.toISOString()}>{formatClock(complaint.createdAt)}</time>
+          </p>
+        </Bubble>
+
+        {messages.length === 0 && (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm" style={{ color: t.fgMuted }}>
+            <MessageSquareWarning aria-hidden="true" className="h-4 w-4" /> No replies yet
           </div>
         )}
 
-        {complaint.messages.map((m) => {
-          const isLandlord = m.senderRole === "LANDLORD";
+        {messages.map((m, i) => {
+          const mine = m.senderRole === "LANDLORD";
+          const pending = "sending" in m;
           return (
-            <div key={m.id} className={`flex ${isLandlord ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-md rounded-2xl p-3 ${isLandlord ? "rounded-br-sm" : "rounded-bl-sm"}`}
-                style={
-                  isLandlord
-                    ? { backgroundColor: "#9A3A1A", color: "#fff" }
-                    : { backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }
-                }
-              >
-                <p className="text-sm">{m.body}</p>
-                <p className="mt-1 text-[10px] opacity-60">{m.senderName}</p>
-              </div>
+            <div key={pending ? m.key : m.id} className="space-y-3">
+              <DayBreak label={breaks[i + 1]} />
+              <Bubble mine={mine} className={pending ? "page-enter" : ""}>
+                <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
+                <p className="mt-1.5 font-mono text-[11px]" style={{ color: mine ? "rgba(255,255,255,0.8)" : t.fgMuted }}>
+                  {m.senderName} ·{" "}
+                  {pending && m.sending ? "Sending…" : <time dateTime={m.createdAt.toISOString()}>{formatClock(m.createdAt)}</time>}
+                </p>
+              </Bubble>
             </div>
           );
         })}
       </div>
 
-      <div className="p-4" style={{ borderTop: `1px solid ${t.cardBorder}` }}>
-        <div className="flex items-center gap-2">
-          <input
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            placeholder="Reply to tenant…"
-            className="flex-1 rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }}
-          />
+      <div className="shrink-0" style={{ backgroundColor: t.sidebarBg }}>
+        {notice && (
+          <div
+            role={notice.kind === "error" ? "alert" : "status"}
+            className="page-enter mx-3 mt-3 flex min-h-11 items-center gap-1 rounded-2xl py-1 pl-3.5 pr-1 text-sm sm:mx-5"
+            style={
+              notice.kind === "error"
+                ? { backgroundColor: "rgba(248,113,113,0.15)", color: "#fca5a5" }
+                : { backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }
+            }
+          >
+            <span className="min-w-0 flex-1">
+              {notice.kind === "error" ? notice.message : `Marked as ${(COMPLAINT_STATUS_LABEL[status] ?? "done").toLowerCase()}.`}
+            </span>
+            {notice.kind === "undo" && (
+              <button
+                type="button"
+                onClick={() => undo(notice.previous)}
+                aria-disabled={updateStatus.isPending || undefined}
+                className={`press min-h-11 shrink-0 rounded-xl px-3 font-mono text-xs aria-disabled:opacity-60 ${FOCUS_RING}`}
+                style={{ color: t.accentLight }}
+              >
+                UNDO
+              </button>
+            )}
+            {notice.kind === "error" && notice.retry && (
+              <button
+                type="button"
+                onClick={() => retry(notice)}
+                className={`press min-h-11 shrink-0 rounded-xl px-3 font-mono text-xs text-white ${FOCUS_RING}`}
+              >
+                TRY AGAIN
+              </button>
+            )}
+            {notice.kind === "error" && notice.billing && (
+              <Link href="/settings/billing" className={`press flex min-h-11 shrink-0 items-center rounded-xl px-3 font-mono text-xs text-white ${FOCUS_RING}`}>
+                BILLING
+              </Link>
+            )}
+            {notice.kind === "error" && (
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setNotice(null)}
+                className={`press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${FOCUS_RING}`}
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+          className="flex items-end gap-2 px-3 py-3 sm:px-5"
+        >
+          <div className="min-w-0 flex-1">
+            <label htmlFor="complaint-reply" className="sr-only">
+              Reply to {complaint.tenantName}
+            </label>
+            {/* field-sizing grows the box with the text (up to about five lines) where the browser
+                supports it; elsewhere it stays one line and scrolls. */}
+            <textarea
+              id="complaint-reply"
+              ref={boxRef}
+              rows={1}
+              value={draft}
+              maxLength={REPLY_MAX}
+              enterKeyHint="send"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (shouldSendOnKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={`Reply to ${firstName}…`}
+              className={`field-sizing-content block max-h-32 min-h-11 w-full resize-none rounded-2xl px-3.5 py-2.5 text-sm placeholder:text-white/55 ${FOCUS_RING}`}
+              style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fg }}
+            />
+            {draft.length > REPLY_MAX - 200 && (
+              <p className="mt-1 text-right font-mono text-[11px]" style={{ color: t.fgMuted }}>
+                {REPLY_MAX - draft.length} characters left
+              </p>
+            )}
+          </div>
           <button
-            type="button"
-            disabled={!reply.trim() || sendReply.isPending}
-            onClick={() => sendReply.mutate({ complaintId: complaint.id, body: reply })}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white disabled:opacity-40"
+            type="submit"
+            aria-label="Send reply"
+            aria-disabled={!canSend || undefined}
+            className={`press flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white aria-disabled:opacity-40 ${FOCUS_RING}`}
             style={{ backgroundColor: t.accent }}
           >
-            <Send className="h-4 w-4" />
+            <Send aria-hidden="true" className="h-4 w-4" />
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );
