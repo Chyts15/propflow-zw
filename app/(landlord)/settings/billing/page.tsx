@@ -2,6 +2,8 @@ import { Bell } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getOrganization, getUnitCountForOrg, getBillingHistoryForOrg } from "@/lib/db/scoped";
+import { resolveExchangeRate } from "@/lib/exchange-rate";
+import { isFreshPending } from "@/lib/billing-plan";
 import { BillingPanel } from "@/components/landlord/billing-panel";
 import { LANDLORD_DARK } from "@/components/landlord/theme";
 
@@ -11,15 +13,29 @@ export default async function BillingPage() {
   const orgId = user.orgId!;
   const t = LANDLORD_DARK;
 
-  const [org, unitCount, history] = await Promise.all([
+  // One "now" for the whole render, taken on the server: the panel never reads the clock itself.
+  const now = new Date();
+  const [org, unitCount, history, rate] = await Promise.all([
     getOrganization(orgId),
     getUnitCountForOrg(orgId),
     getBillingHistoryForOrg(orgId),
+    resolveExchangeRate(orgId),
   ]);
 
   const graceDaysLeft = org.pastDueSince
-    ? 7 - Math.floor((new Date().getTime() - org.pastDueSince.getTime()) / (1000 * 60 * 60 * 24))
+    ? 7 - Math.floor((now.getTime() - org.pastDueSince.getTime()) / (1000 * 60 * 60 * 24))
     : null;
+
+  const historyRows = history.map((h) => ({
+    id: h.id,
+    type: h.type,
+    status: h.status,
+    description: h.description,
+    amountUsd: h.amountUsd,
+    paynowRef: h.paynowRef,
+    createdAt: h.createdAt,
+    awaiting: isFreshPending(h.status, h.createdAt, now),
+  }));
 
   return (
     <div className="mx-auto max-w-3xl p-6 sm:p-8">
@@ -38,7 +54,14 @@ export default async function BillingPage() {
       </div>
 
       <div className="mt-6">
-        <BillingPanel org={org} unitCount={unitCount} history={history} graceDaysLeft={graceDaysLeft} />
+        <BillingPanel
+          org={org}
+          unitCount={unitCount}
+          history={historyRows}
+          graceDaysLeft={graceDaysLeft}
+          usdToZig={rate?.usdToZig ?? null}
+          now={now}
+        />
       </div>
     </div>
   );

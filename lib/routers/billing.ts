@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import * as Sentry from "@sentry/nextjs";
 import { router, landlordProcedure } from "@/lib/trpc";
 import { prisma } from "@/lib/db";
 import {
   getOrganization,
   getBillingHistoryForOrg,
   createPendingBillingEvent,
+  findRecentPendingBillingEvent,
   setBillingEventPollUrl,
   finalizeBillingEvent,
 } from "@/lib/db/scoped";
@@ -60,6 +62,16 @@ export const billingRouter = router({
       metadata = { smsQty: bundle.qty };
     }
 
+    // A double tap, or a second tab, starts the same payment twice: refuse the second while the
+    // first is still moments old. A deliberate retry a minute later is allowed.
+    if (await findRecentPendingBillingEvent(ctx.orgId, description, 60_000)) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message:
+          "A payment for this was just started. Wait a minute, then check your billing history before trying again.",
+      });
+    }
+
     // Our own reference — the BillingEvent.paynowRef unique constraint is the
     // idempotency anchor the webhook looks up (spec: Security §2).
     const reference = `PF-${ctx.orgId.slice(-8)}-${Date.now()}`;
@@ -74,9 +86,16 @@ export const billingRouter = router({
 
     if (!response?.success || !response.hasRedirect || !response.redirectUrl) {
       await finalizeBillingEvent(event.id, "FAILED");
+      // Paynow's own wording is technical and not for the landlord; it goes to Sentry, and the
+      // failed attempt shows in their billing history with a plain explanation.
+      Sentry.captureMessage("Paynow refused to start a payment", {
+        level: "warning",
+        tags: { area: "paynow-initiate" },
+        extra: { reference, paynowError: response?.error?.toString() },
+      });
       throw new TRPCError({
         code: "BAD_GATEWAY",
-        message: response?.error?.toString() ?? "Failed to initiate payment with Paynow",
+        message: "Paynow couldn't start this payment. You haven't been charged. Please try again in a few minutes.",
       });
     }
 

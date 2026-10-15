@@ -40,7 +40,7 @@ export default async function PropertyDetailPage({
         {property.address}, {property.suburb}, {property.city}
       </p>
 
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6 flex items-start justify-between gap-4">
         <h2 className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
           Units
         </h2>

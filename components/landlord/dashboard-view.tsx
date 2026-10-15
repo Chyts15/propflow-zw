@@ -17,6 +17,7 @@ import {
   COMPLAINT_STATUS_LABEL,
   PRIORITY_LABEL,
 } from "@/components/landlord/theme";
+import { formatMonthName } from "@/lib/dates";
 import { formatRelativeTime } from "@/lib/utils";
 
 // Presentational half of the landlord dashboard. app/(landlord)/dashboard/page.tsx
@@ -50,6 +51,9 @@ export type DashboardRentRow = {
   status: string;
   /** Unpaid and past its due date. Derived, because nothing ever sets the OVERDUE status. */
   isOverdue: boolean;
+  /** The month this rent belongs to: unpaid rent from earlier months is listed too. */
+  periodMonth: number;
+  periodYear: number;
   paymentMethod: string | null;
   proofImageUrl: string | null;
 };
@@ -397,10 +401,21 @@ export function DashboardView({
                   const statusBadge = RENT_STATUS_BADGE[shownStatus];
                   const proofPending = !!r.proofImageUrl && r.status !== "PAID";
                   const rowZig = usdToZig == null ? null : Math.round(r.amountDueUsd * usdToZig);
+                  // Rent from an earlier month names its month and opens that month's ledger,
+                  // so a row never lands the landlord on a page where it is not listed.
+                  const fromEarlier = r.periodYear !== period.year || r.periodMonth !== period.month;
+                  const rowHref = fromEarlier
+                    ? `/finances?month=${r.periodYear}-${String(r.periodMonth).padStart(2, "0")}`
+                    : "/finances";
+                  const earlierLabel = !fromEarlier
+                    ? null
+                    : r.periodYear !== period.year
+                      ? `${formatMonthName(r.periodMonth)} ${r.periodYear}`
+                      : formatMonthName(r.periodMonth);
                   return (
                     <Link
                       key={r.id}
-                      href="/finances"
+                      href={rowHref}
                       className={`flex min-h-14 items-start justify-between gap-3 px-4 py-3 transition ${FOCUS} ${
                         proofPending
                           ? "bg-[rgba(200,82,42,0.08)] hover:bg-[rgba(200,82,42,0.16)]"
@@ -419,6 +434,12 @@ export function DashboardView({
                             <span className="whitespace-nowrap" style={{ color: t.fgMuted }}>
                               {" "}
                               · ${r.amountPaidUsd.toLocaleString("en-US")} paid
+                            </span>
+                          )}
+                          {earlierLabel && (
+                            <span className="whitespace-nowrap" style={{ color: t.fgMuted }}>
+                              {" "}
+                              · {earlierLabel} rent
                             </span>
                           )}
                         </p>

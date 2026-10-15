@@ -31,9 +31,22 @@ export function AddUnitDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
+  // Every hook runs before the atCap branch below. Adding the unit that reaches the cap makes
+  // router.refresh() re-render this same instance with atCap flipped to true; an early return
+  // above the hooks changed the hook count between renders and React threw, which surfaced as
+  // the page's generic "couldn't load" error even though the unit had saved.
+  const create = trpc.units.create.useMutation({
+    onSuccess: () => {
+      toast.success("Unit added");
+      setOpen(false);
+      router.refresh();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   if (atCap) {
     return (
-      <div className="relative">
+      <div className="flex flex-col items-end gap-2">
         <Button
           disabled
           variant="outline"
@@ -45,15 +58,6 @@ export function AddUnitDialog({
       </div>
     );
   }
-
-  const create = trpc.units.create.useMutation({
-    onSuccess: () => {
-      toast.success("Unit added");
-      setOpen(false);
-      router.refresh();
-    },
-    onError: (err) => toast.error(err.message),
-  });
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

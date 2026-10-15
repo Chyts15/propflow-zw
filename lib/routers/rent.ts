@@ -4,7 +4,8 @@ import {
   getRentRecordsForOrg,
   getRentHistoryForTenant,
   getRentLedgerStats,
-  markRentRecordPaid,
+  recordRentPayment,
+  undoRentPayment,
   setManualExchangeRate,
   submitPaymentProofForTenant,
   generateRentRecordsForPeriod,
@@ -47,7 +48,8 @@ export const rentRouter = router({
     .input(z.object({ periodMonth: z.number().int().min(1).max(12), periodYear: z.number().int() }))
     .mutation(({ ctx, input }) => generateRentRecordsForPeriod(input.periodMonth, input.periodYear, ctx.orgId)),
 
-  // Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
+  // Records money RECEIVED against a rent record: PAID when it covers what is due, PARTIAL when
+  // it does not. Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
   markPaid: landlordWriteProcedure
     .input(
       z
@@ -55,7 +57,7 @@ export const rentRouter = router({
           rentRecordId: z.string().cuid(),
           method: z.enum(PAYMENT_METHODS),
           referenceNo: z.string().max(40).optional(),
-          amountUsd: z.number().positive(),
+          amountUsd: z.number().positive().max(1_000_000),
         })
         .superRefine((val, ctx) => {
           if (val.method === "ECOCASH" && !ECOCASH_REF.test(val.referenceNo ?? "")) {
@@ -67,7 +69,13 @@ export const rentRouter = router({
           }
         }),
     )
-    .mutation(({ ctx, input }) => markRentRecordPaid(ctx.orgId, ctx.dbUser.id, input)),
+    .mutation(({ ctx, input }) => recordRentPayment(ctx.orgId, ctx.dbUser.id, input)),
+
+  // Takes back the latest payment still standing on a record, as a new negative PaymentEvent.
+  // The client names the payment it is undoing so a stale screen cannot reverse a different one.
+  undoPayment: landlordWriteProcedure
+    .input(z.object({ rentRecordId: z.string().cuid(), paymentEventId: z.string().cuid() }))
+    .mutation(({ ctx, input }) => undoRentPayment(ctx.orgId, ctx.dbUser.id, input)),
 
   // Tenant reads of their own rent history/proof — never gated by org billing
   // status, including PAST_DUE/CANCELLED (CLAUDE.md § Tier Gating & Tenant Access).

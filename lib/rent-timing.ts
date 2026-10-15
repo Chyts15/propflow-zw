@@ -7,6 +7,8 @@
 // helpers follow both rules, and compare calendar days in Zimbabwe time (CAT, UTC+2)
 // rather than the server's zone, which is UTC on Vercel.
 
+import { round2 } from "./money";
+
 export const ZIMBABWE_TZ = "Africa/Harare";
 
 /** A calendar day as a sortable integer: 2026-06-22 becomes 20260622. */
@@ -52,6 +54,52 @@ export function isOverdueRecord(r: TimedRentRecord, today: Ymd): boolean {
   if (r.status === "OVERDUE") return true;
   if (r.status !== "PENDING" && r.status !== "PARTIAL") return false;
   return today > dueYmd(r.periodYear, r.periodMonth, r.rentDueDay);
+}
+
+/** Whole calendar days from `from` to `to`; negative when `to` is the earlier day. */
+export function daysBetween(from: Ymd, to: Ymd): number {
+  const utc = (d: Ymd) => Date.UTC(Math.floor(d / 10000), (Math.floor(d / 100) % 100) - 1, d % 100);
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
+/** Days past the due date; 0 when the record is not past due. */
+export function daysLate(r: TimedRentRecord, today: Ymd): number {
+  return Math.max(daysBetween(dueYmd(r.periodYear, r.periodMonth, r.rentDueDay), today), 0);
+}
+
+/** What is still owed on a record, never negative. */
+export function balanceUsd(r: { amountDueUsd: number; amountPaidUsd: number }): number {
+  return Math.max(round2(r.amountDueUsd - r.amountPaidUsd), 0);
+}
+
+export type OwingRentRecord = TimedRentRecord & {
+  unitId: string;
+  amountDueUsd: number;
+  amountPaidUsd: number;
+};
+
+/**
+ * The single definition of "overdue" shared by the dashboard, the rent ledger and its stats:
+ * unpaid or part-paid rent past its due date, from ANY period. `usd` is the remaining balance
+ * (a part-paid record owes only what is left), and `unitCount` counts units, not records, so a
+ * tenant two months behind is one unit.
+ */
+export function summarizeOverdue<R extends OwingRentRecord>(records: R[], today: Ymd) {
+  const overdue = records.filter((r) => isOverdueRecord(r, today));
+  const usd = round2(overdue.reduce((sum, r) => sum + balanceUsd(r), 0));
+  const unitCount = new Set(overdue.map((r) => r.unitId)).size;
+  const periodKey = (r: R) => r.periodYear * 100 + r.periodMonth;
+  const oldestKey = overdue.length === 0 ? null : Math.min(...overdue.map(periodKey));
+  return {
+    records: overdue,
+    usd,
+    unitCount,
+    /** Period (year/month) of the oldest overdue record, for linking to it. */
+    oldest: oldestKey === null ? null : { year: Math.floor(oldestKey / 100), month: oldestKey % 100 },
+    /** Balance overdue from periods before the given one (year*100 + month). */
+    usdBefore: (key: number) =>
+      round2(overdue.filter((r) => periodKey(r) < key).reduce((sum, r) => sum + balanceUsd(r), 0)),
+  };
 }
 
 /**
