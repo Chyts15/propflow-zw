@@ -1,6 +1,7 @@
 import { expireLapsedSubscriptions, getBillingRecipientsForOrg } from "@/lib/db/scoped";
 import { sendBillingEmailBatch } from "@/lib/email/resend";
 import { EMAIL_TEMPLATES } from "@/lib/email/templates";
+import { rejectUnauthorizedCron } from "@/lib/cron-auth";
 
 // Vercel Cron, daily (see vercel.json). Flips ACTIVE subscriptions whose
 // currentPeriodEnd has passed without a confirmed Paynow renewal to
@@ -12,10 +13,8 @@ import { EMAIL_TEMPLATES } from "@/lib/email/templates";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const rejected = rejectUnauthorizedCron(req);
+  if (rejected) return rejected;
 
   const orgs = await expireLapsedSubscriptions();
 

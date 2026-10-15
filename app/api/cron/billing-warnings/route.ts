@@ -2,6 +2,7 @@ import { findAndMarkTrialWarnings, findAndMarkRenewalWarnings, getBillingRecipie
 import { sendBillingEmailBatch } from "@/lib/email/resend";
 import { EMAIL_TEMPLATES } from "@/lib/email/templates";
 import { TIER_PRICES } from "@/lib/tier";
+import { rejectUnauthorizedCron } from "@/lib/cron-auth";
 
 // Vercel Cron, daily (see vercel.json). 3-day advance warnings for both
 // trial expiry and subscription renewal — separate from the two lapse crons
@@ -9,10 +10,8 @@ import { TIER_PRICES } from "@/lib/tier";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const rejected = rejectUnauthorizedCron(req);
+  if (rejected) return rejected;
 
   const [trialOrgs, renewalOrgs] = await Promise.all([findAndMarkTrialWarnings(), findAndMarkRenewalWarnings()]);
 

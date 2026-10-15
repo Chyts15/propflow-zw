@@ -1,4 +1,5 @@
 import { generateRentRecordsForPeriod } from "@/lib/db/scoped";
+import { rejectUnauthorizedCron } from "@/lib/cron-auth";
 
 // Vercel Cron, monthly on the 1st (see vercel.json). Creates a RentRecord for
 // every active Tenancy for the current period, across every org — the
@@ -7,10 +8,8 @@ import { generateRentRecordsForPeriod } from "@/lib/db/scoped";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const rejected = rejectUnauthorizedCron(req);
+  if (rejected) return rejected;
 
   const now = new Date();
   const result = await generateRentRecordsForPeriod(now.getMonth() + 1, now.getFullYear());
