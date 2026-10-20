@@ -46,9 +46,18 @@ export const complaintsRouter = router({
 
   reply: landlordWriteProcedure
     // Trimmed first, so a reply of only spaces or line breaks is refused instead of saved.
-    .input(z.object({ complaintId: z.string().cuid(), body: z.string().trim().min(1).max(2000), imageUrls: landlordReplyPhotos }))
+    // messageId is chosen by the screen once per reply and sent again on a retry, so a reply whose
+    // response was lost is saved once (see addComplaintMessageForOrg).
+    .input(
+      z.object({
+        complaintId: z.string().cuid(),
+        messageId: z.string().uuid(),
+        body: z.string().trim().min(1).max(2000),
+        imageUrls: landlordReplyPhotos,
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls),
+      addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls, input.messageId),
     ),
 
   // Tenant reads of their own complaints — never gated by org billing status.

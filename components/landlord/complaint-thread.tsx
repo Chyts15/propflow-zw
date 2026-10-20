@@ -38,6 +38,7 @@ import {
 import { formatLongDate } from "@/lib/dates";
 import { formatZwPhone } from "@/lib/phone";
 import { friendlyMessage } from "@/lib/trpc-error";
+import { idForReply, type UnconfirmedReply } from "@/lib/message-id";
 
 const t = LANDLORD_DARK;
 const BONE = "rgba(255,255,255,0.07)";
@@ -196,7 +197,9 @@ export function ComplaintThread({ complaint, viewerName }: { complaint: Complain
   const utils = trpc.useUtils();
   const listRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
-  const localSeq = useRef(0);
+  // The id of a reply whose send has not been confirmed. Sending the same words again reuses it, so
+  // a lost response followed by Try again is saved once; different words, or a confirmed send, start a new id.
+  const unconfirmed = useRef<UnconfirmedReply | null>(null);
 
   const [draft, setDraft] = useState("");
   const [local, setLocal] = useState<LocalMessage[]>([]);
@@ -285,8 +288,8 @@ export function ComplaintThread({ complaint, viewerName }: { complaint: Complain
   function send() {
     const body = draft.trim();
     if (!isSendable(body) || sendReply.isPending) return;
-    localSeq.current += 1;
-    const key = `local-${localSeq.current}`;
+    const key = idForReply(unconfirmed.current, body);
+    unconfirmed.current = { id: key, body };
     setLocal((l) => [
       ...l,
       { id: key, key, senderRole: "LANDLORD", senderName: viewerName, body, imageUrls: [], createdAt: new Date(), sending: true },
@@ -295,10 +298,12 @@ export function ComplaintThread({ complaint, viewerName }: { complaint: Complain
     setNotice(null);
     boxRef.current?.focus();
     sendReply.mutate(
-      { complaintId: complaint.id, body, imageUrls: [] },
+      { complaintId: complaint.id, messageId: key, body, imageUrls: [] },
       {
-        onSuccess: (saved) =>
-          setLocal((l) => l.map((m) => (m.key === key ? { ...m, id: saved.id, createdAt: saved.createdAt, sending: false } : m))),
+        onSuccess: (saved) => {
+          if (unconfirmed.current?.id === key) unconfirmed.current = null;
+          setLocal((l) => l.map((m) => (m.key === key ? { ...m, id: saved.id, createdAt: saved.createdAt, sending: false } : m)));
+        },
         onError: (err) => {
           // Roll back: the bubble goes and the words go back in the box.
           setLocal((l) => l.filter((m) => m.key !== key));

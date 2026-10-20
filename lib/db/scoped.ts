@@ -279,6 +279,10 @@ export async function updateComplaintPriority(orgId: string, complaintId: string
   if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
 }
 
+// The reply is saved under `messageId`, which the sending screen picks before the first attempt and
+// reuses when the landlord taps Try again. A lost response followed by a retry used to save the
+// reply twice; now the retry meets the row the first attempt wrote and gets that row back. The
+// primary key is the idempotency key, so this needs no extra column.
 export async function addComplaintMessageForOrg(
   orgId: string,
   complaintId: string,
@@ -286,15 +290,25 @@ export async function addComplaintMessageForOrg(
   senderRole: UserRole,
   body: string,
   imageUrls: string[],
+  messageId: string,
 ) {
   const complaint = await prisma.complaint.findFirst({
     where: { id: complaintId, unit: { property: { orgId } } },
     select: { id: true },
   });
   if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
-  return prisma.complaintMessage.create({
-    data: { complaintId, senderId, senderRole, body, imageUrls },
-  });
+  try {
+    return await prisma.complaintMessage.create({
+      data: { id: messageId, complaintId, senderId, senderRole, body, imageUrls },
+    });
+  } catch (err) {
+    if ((err as { code?: string } | null)?.code !== "P2002") throw err;
+    // The id is taken. It is a retry only if this same sender already saved this same reply on this
+    // complaint; the lookup is scoped that way, so a row belonging to anyone else is never read back.
+    const saved = await prisma.complaintMessage.findFirst({ where: { id: messageId, complaintId, senderId } });
+    if (saved && saved.body === body) return saved;
+    throw new TRPCError({ code: "CONFLICT", message: "That reply could not be saved. Please send it again." });
+  }
 }
 
 // Tenant creates a complaint only on their own unit — ctx.tenancy.unitId
