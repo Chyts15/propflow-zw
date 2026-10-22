@@ -1067,8 +1067,35 @@ export async function getComplaintsForTenant(tenantId: string, { cursor }: Curso
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: "desc" },
+    // The newest landlord reply and how many there are, so the list can say a reply is waiting
+    // without loading every thread.
+    include: {
+      messages: { where: { senderRole: "LANDLORD" }, orderBy: { createdAt: "desc" }, take: 1, select: { body: true, createdAt: true } },
+      _count: { select: { messages: { where: { senderRole: "LANDLORD" } } } },
+    },
   });
   return paginate(items);
+}
+
+// How many messages one thread shows (the newest). A thread is a short conversation, so this is a
+// ceiling that is not expected to be reached, not a page size.
+const THREAD_LIMIT = 100;
+
+// A tenant reads one of their own complaints with its replies. Scoped to tenantId and, like every
+// tenant read, never gated by the landlord's billing status (CLAUDE.md § Tier Gating & Tenant Access).
+export async function getComplaintForTenant(tenantId: string, complaintId: string) {
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: complaintId, tenantId },
+    include: {
+      messages: {
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: THREAD_LIMIT,
+        select: { id: true, senderRole: true, body: true, createdAt: true },
+      },
+    },
+  });
+  if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+  return { ...complaint, messages: [...complaint.messages].reverse() };
 }
 
 // The in-app SMS toggle on the tenant profile is the authoritative opt-out (CLAUDE.md § Africa-

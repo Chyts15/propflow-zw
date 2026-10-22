@@ -6,6 +6,7 @@ import { getComplaintsForTenant } from "@/lib/db/scoped";
 import { TENANT_DARK, TENANT_FOCUS_RING, COMPLAINT_STATUS_TONE } from "@/components/tenant/theme";
 import { formatRelativeTime } from "@/lib/utils";
 import { COMPLAINT_STATUS_LABEL } from "@/lib/tenant-rent-view";
+import { previewText, replyLabel } from "@/lib/tenant-complaint-view";
 
 export default async function TenantComplaintsPage() {
   const { userId } = await auth();
@@ -39,16 +40,31 @@ export default async function TenantComplaintsPage() {
         </div>
       ) : (
         <div className="mt-6 space-y-2.5">
-          {complaints.map((c) => (
-            <div key={c.id} className="rounded-2xl p-4" style={{ backgroundColor: COMPLAINT_STATUS_TONE[c.status] }}>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">{COMPLAINT_STATUS_LABEL[c.status] ?? "Open"}</p>
-                <span className="text-xs text-white/60">{formatRelativeTime(c.createdAt)}</span>
-              </div>
-              <p className="text-sm font-medium text-white">{c.title}</p>
-              <p className="mt-0.5 text-xs text-white/70">{c.description}</p>
-            </div>
-          ))}
+          {complaints.map((c) => {
+            const latest = c.messages[0];
+            const replies = replyLabel(c._count.messages);
+            return (
+              <Link
+                key={c.id}
+                href={`/my-complaints/${c.id}`}
+                className={`press block rounded-2xl p-4 ${TENANT_FOCUS_RING}`}
+                style={{ backgroundColor: COMPLAINT_STATUS_TONE[c.status] }}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-white">{COMPLAINT_STATUS_LABEL[c.status] ?? "Open"}</p>
+                  <span className="text-xs text-white/80">{formatRelativeTime(c.createdAt)}</span>
+                </div>
+                <p className="text-sm font-medium text-white">{c.title}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-white/80">{c.description}</p>
+                {latest && replies && (
+                  <div className="mt-3 rounded-xl bg-black/25 px-3 py-2">
+                    <p className="text-xs font-medium text-white">{replies}</p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-white/80">{previewText(latest.body)}</p>
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
