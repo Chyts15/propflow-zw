@@ -59,6 +59,12 @@ export default async function TenantsPage({ searchParams }: { searchParams: Prom
         </p>
       )}
 
+      {pending.truncated && (
+        <p role="status" className="mt-3 text-sm" style={{ color: t.fgMuted }}>
+          Only the newest pending invitations are shown right now, so an older one may be missing from this page.
+        </p>
+      )}
+
       {showPending && (
         <section aria-labelledby="pending-heading" className="mt-6">
           <h2 id="pending-heading" className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>

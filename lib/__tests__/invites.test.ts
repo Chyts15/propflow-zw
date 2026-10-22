@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   INVITE_TTL_DAYS,
   RESEND_COOLDOWN_SECONDS,
@@ -7,6 +7,7 @@ import {
   noInviteReason,
   parseInviteMetadata,
   resendWaitSeconds,
+  scanInvitations,
   toPendingInvites,
   type InvitationLike,
 } from "../invites";
@@ -158,11 +159,81 @@ describe("inviteFailure", () => {
     expect(failure.message).toMatch(/already has a PropFlow account or a pending invitation/);
   });
 
+  it("tells the landlord what to do when Clerk refuses the address under a code we do not know", () => {
+    const failure = inviteFailure(
+      Object.assign(new Error("Unprocessable Entity"), {
+        status: 422,
+        errors: [{ code: "some_code_clerk_has_not_documented", message: "chipo@example.co.zw is taken" }],
+      }),
+    );
+    expect(failure.trpcCode).toBe("BAD_REQUEST");
+    expect(failure.message).toMatch(/already have a PropFlow account or a pending invitation/);
+    expect(failure.message).not.toContain("chipo");
+    // The unknown code is kept in the log, which is how the real one gets found.
+    expect(failure.log).toEqual({ status: 422, codes: ["some_code_clerk_has_not_documented"] });
+  });
+
+  it("keeps the specific messages ahead of the 422 fallback", () => {
+    expect(inviteFailure({ status: 422, errors: [{ code: "form_identifier_exists" }] }).trpcCode).toBe("CONFLICT");
+    expect(inviteFailure({ status: 422, errors: [{ code: "form_param_format_invalid" }] }).message).toMatch(/doesn't look right/);
+  });
+
   it("maps a rate limit and falls back to a calm generic message for anything else", () => {
     expect(inviteFailure({ status: 429 }).trpcCode).toBe("TOO_MANY_REQUESTS");
     const unknown = inviteFailure(Object.assign(new Error("Forbidden"), { status: 403 }));
     expect(unknown.trpcCode).toBe("INTERNAL_SERVER_ERROR");
     expect(unknown.message).not.toContain("Forbidden");
     expect(unknown.message).toMatch(/try again/i);
+  });
+});
+
+describe("scanInvitations", () => {
+  // A stand-in for Clerk: `total` invitations, newest first, handed out a page at a time.
+  const clerk = (total: number) => {
+    const rows = Array.from({ length: total }, (_, i) => invite({ id: `inv_${i}` }));
+    const fetchPage = vi.fn(async (offset: number, limit: number) => ({ data: rows.slice(offset, offset + limit), totalCount: total }));
+    return fetchPage;
+  };
+  const options = { pageSize: 100, maxPages: 5 };
+
+  it("reads everything and says the list is complete when it fits", async () => {
+    const result = await scanInvitations(clerk(250), options);
+    expect(result.all).toHaveLength(250);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("stops after one request when the first page is the last", async () => {
+    const fetchPage = clerk(40);
+    const result = await scanInvitations(fetchPage, options);
+    expect(result.all).toHaveLength(40);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles an empty instance", async () => {
+    expect(await scanInvitations(clerk(0), options)).toEqual({ all: [], truncated: false });
+  });
+
+  it("is complete, not truncated, when the invitations exactly fill the ceiling", async () => {
+    const result = await scanInvitations(clerk(500), options);
+    expect(result.all).toHaveLength(500);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("says the list is incomplete when the ceiling stops the scan with invitations left", async () => {
+    const fetchPage = clerk(501);
+    const result = await scanInvitations(fetchPage, options);
+    expect(result.all).toHaveLength(500);
+    expect(result.truncated).toBe(true);
+    expect(fetchPage).toHaveBeenCalledTimes(5);
+  });
+
+  it("asks for each page at the right offset, newest first", async () => {
+    const fetchPage = clerk(250);
+    await scanInvitations(fetchPage, options);
+    expect(fetchPage.mock.calls).toEqual([
+      [0, 100],
+      [100, 100],
+      [200, 100],
+    ]);
   });
 });

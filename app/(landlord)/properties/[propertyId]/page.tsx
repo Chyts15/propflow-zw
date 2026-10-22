@@ -45,7 +45,7 @@ export default async function PropertyDetailPage({
   const [org, unitCount, pending] = await Promise.all([
     getOrganization(user.orgId!),
     getUnitCountForOrg(user.orgId!),
-    hasVacant ? getPendingInvitesForOrg(user.orgId!) : Promise.resolve({ invites: [], unavailable: false }),
+    hasVacant ? getPendingInvitesForOrg(user.orgId!) : Promise.resolve({ invites: [], unavailable: false, truncated: false }),
   ]);
   const pendingByUnit = new Map(pending.invites.map((i) => [i.unitId, i]));
 
@@ -75,6 +75,12 @@ export default async function PropertyDetailPage({
         <p role="status" className="mt-3 text-sm" style={{ color: t.fgMuted }}>
           We couldn&rsquo;t check for pending invitations just now, so a unit you have invited may still show as vacant. Reload
           the page to try again.
+        </p>
+      )}
+
+      {pending.truncated && (
+        <p role="status" className="mt-3 text-sm" style={{ color: t.fgMuted }}>
+          Only the newest pending invitations are shown right now, so an older one may still show as vacant.
         </p>
       )}
 

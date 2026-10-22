@@ -41,9 +41,11 @@ async function sendInvitation(
 }
 
 async function findPendingInvite(orgId: string, id: string): Promise<PendingInvite> {
-  const { invites, unavailable } = await getPendingInvitesForOrg(orgId);
+  const { invites, unavailable, truncated } = await getPendingInvitesForOrg(orgId);
   if (unavailable) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: UNAVAILABLE });
   const invite = invites.find((i) => i.id === id);
+  // In an incomplete list, an invitation that is not there may only be too old to have been read.
+  if (!invite && truncated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: UNAVAILABLE });
   if (!invite) {
     throw new TRPCError({ code: "NOT_FOUND", message: "That invitation is no longer waiting. Refresh the page to see the latest." });
   }

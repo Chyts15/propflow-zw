@@ -39,6 +39,26 @@ export type InvitationLike = {
   publicMetadata: Record<string, unknown> | null;
 };
 
+export type InvitationPage = { data: InvitationLike[]; totalCount: number };
+
+/**
+ * Reads pending invitations a page at a time, newest first, until none are left or `maxPages` pages
+ * have been read. `truncated` is true when the ceiling stopped the scan with invitations still
+ * unread, so the caller can say the list is incomplete instead of silently dropping the oldest.
+ */
+export async function scanInvitations(
+  fetchPage: (offset: number, limit: number) => Promise<InvitationPage>,
+  { pageSize, maxPages }: { pageSize: number; maxPages: number },
+): Promise<{ all: InvitationLike[]; truncated: boolean }> {
+  const all: InvitationLike[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const { data, totalCount } = await fetchPage(page * pageSize, pageSize);
+    all.push(...data);
+    if (data.length < pageSize || all.length >= totalCount) return { all, truncated: false };
+  }
+  return { all, truncated: true };
+}
+
 export type PendingInvite = {
   id: string;
   name: string;
@@ -148,6 +168,19 @@ export function inviteFailure(err: unknown): InviteFailure {
   }
   if (status === 429) {
     return { trpcCode: "TOO_MANY_REQUESTS", message: "Too many invitations in a short time. Wait a minute and try again.", log };
+  }
+  // Clerk's documentation does not list the error codes createInvitation returns when an address
+  // is already invited or already has an account (it only says the call fails unless
+  // ignoreExisting is set), so the codes above are best guesses. A 422 is Clerk refusing the
+  // address itself, so whatever the code turns out to be, the landlord is told what to do rather
+  // than that something went wrong. The code is logged (see inviteFailure's log), which names it.
+  if (status === 422) {
+    return {
+      trpcCode: "BAD_REQUEST",
+      message:
+        "We couldn't invite that email address. It may already have a PropFlow account or a pending invitation, or it may not be accepted. Check it, or invite a different email address.",
+      log,
+    };
   }
   return {
     trpcCode: "INTERNAL_SERVER_ERROR",
