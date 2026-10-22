@@ -13,6 +13,7 @@ import { TRPCError } from "@trpc/server";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
 import { complaintPhotoPrefix, firstForeignPhoto } from "@/lib/storage/upload-url";
 import { landlordReplyPhotos } from "@/lib/complaint-photos";
+import { CLIENT_CUID } from "@/lib/message-id";
 import { SCOPE_QUERY } from "@/lib/complaint-queue";
 import { uploadRateLimit } from "@/lib/rate-limit";
 import type { ComplaintStatus } from "@/generated/prisma/client";
@@ -70,6 +71,8 @@ export const complaintsRouter = router({
   create: tenantProcedure
     .input(
       z.object({
+        // Chosen by the form once per complaint and sent again on a retry (see createComplaintForTenant).
+        complaintId: z.string().regex(CLIENT_CUID),
         title: z.string().min(1).max(200),
         description: z.string().min(1).max(2000),
         category: z.enum(["Plumbing", "Electrical", "Water/Borehole", "Security", "Structure", "Other"]),
@@ -85,7 +88,8 @@ export const complaintsRouter = router({
           message: "One of the photos wasn't uploaded through PropFlow. Please add it again.",
         });
       }
-      return createComplaintForTenant(ctx.dbUser.id, ctx.tenancy.unitId, input);
+      const { complaintId, ...fields } = input;
+      return createComplaintForTenant(ctx.dbUser.id, ctx.tenancy.unitId, { id: complaintId, ...fields });
     }),
 
   // Spec: Security §5 — presigned URLs only, scoped per user, validated

@@ -7,6 +7,7 @@ import { Wrench, Zap, Droplets, Shield, Building2, MoreHorizontal, Camera, X, Ro
 import { trpc } from "@/lib/trpc-client";
 import { tenantErrorMessage } from "@/lib/tenant-errors";
 import { rejectSource } from "@/lib/image-upload";
+import { idForAttempt, newComplaintId, type UnconfirmedAttempt } from "@/lib/message-id";
 import { Bone } from "@/components/tenant/skeletons";
 import { TENANT_DARK, TENANT_FOCUS_RING } from "@/components/tenant/theme";
 import { useImageUploads } from "@/components/tenant/use-image-uploads";
@@ -26,6 +27,9 @@ export default function NewComplaintPage() {
   const t = TENANT_DARK;
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The id a submission went out under while it is unconfirmed. Submitting the same complaint again
+  // after a lost response reuses it, so the landlord is not sent the same problem twice.
+  const unconfirmed = useRef<UnconfirmedAttempt | null>(null);
 
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]["value"] | null>(null);
   const [title, setTitle] = useState("");
@@ -40,6 +44,7 @@ export default function NewComplaintPage() {
 
   const createComplaint = trpc.complaints.create.useMutation({
     onSuccess: () => {
+      unconfirmed.current = null;
       toast.success("Complaint sent. You can follow it in your complaints list.");
       router.push("/my-complaints");
     },
@@ -67,12 +72,16 @@ export default function NewComplaintPage() {
     if (photos.some((p) => p.status === "preparing" || p.status === "uploading")) return toast.error("Wait for your photos to finish sending");
     if (photos.some((p) => p.status === "failed")) return toast.error("A photo didn't send. Tap it to retry, or remove it.");
 
-    createComplaint.mutate({
+    const fields = {
       category,
       title,
       description: `${description}${accessOk ? "" : "\n\n(Tenant declined access permission.)"}`,
       imageUrls: photos.flatMap((p) => (p.publicUrl ? [p.publicUrl] : [])),
-    });
+    };
+    const content = JSON.stringify(fields);
+    const complaintId = idForAttempt(unconfirmed.current, content, newComplaintId);
+    unconfirmed.current = { id: complaintId, content };
+    createComplaint.mutate({ complaintId, ...fields });
   }
 
   const failed = photos.find((p) => p.status === "failed");

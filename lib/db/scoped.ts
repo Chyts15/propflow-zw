@@ -314,14 +314,30 @@ export async function addComplaintMessageForOrg(
 // Tenant creates a complaint only on their own unit — ctx.tenancy.unitId
 // (injected by tenantProcedure) is the source of truth, never a client-
 // supplied unitId.
+//
+// The complaint is saved under `data.id`, which the form picks before the first attempt and reuses
+// when the tenant taps Submit again after a response was lost on slow data. A retry meets the
+// complaint the first attempt wrote and gets it back, so one problem is never reported twice. The
+// primary key is the idempotency key, so this needs no extra column.
 export async function createComplaintForTenant(
   tenantId: string,
   unitId: string,
-  data: { title: string; description: string; category: string; imageUrls: string[] },
+  data: { id: string; title: string; description: string; category: string; imageUrls: string[] },
 ) {
-  return prisma.complaint.create({
-    data: { ...data, tenantId, unitId },
-  });
+  try {
+    return await prisma.complaint.create({
+      data: { ...data, tenantId, unitId },
+    });
+  } catch (err) {
+    if ((err as { code?: string } | null)?.code !== "P2002") throw err;
+    // The id is taken. It is a retry only if this tenant already filed this same complaint; the
+    // lookup is limited to their own, so a complaint belonging to anyone else is never read back.
+    const filed = await prisma.complaint.findFirst({ where: { id: data.id, tenantId } });
+    if (filed && filed.title === data.title && filed.description === data.description && filed.category === data.category) {
+      return filed;
+    }
+    throw new TRPCError({ code: "CONFLICT", message: "That complaint could not be saved. Please send it again." });
+  }
 }
 
 export async function getRentRecordsForOrg(

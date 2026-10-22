@@ -38,7 +38,7 @@ import {
 import { formatLongDate } from "@/lib/dates";
 import { formatZwPhone } from "@/lib/phone";
 import { friendlyMessage } from "@/lib/trpc-error";
-import { idForReply, type UnconfirmedReply } from "@/lib/message-id";
+import { idForAttempt, newMessageId, type UnconfirmedAttempt } from "@/lib/message-id";
 
 const t = LANDLORD_DARK;
 const BONE = "rgba(255,255,255,0.07)";
@@ -199,7 +199,7 @@ export function ComplaintThread({ complaint, viewerName }: { complaint: Complain
   const boxRef = useRef<HTMLTextAreaElement>(null);
   // The id of a reply whose send has not been confirmed. Sending the same words again reuses it, so
   // a lost response followed by Try again is saved once; different words, or a confirmed send, start a new id.
-  const unconfirmed = useRef<UnconfirmedReply | null>(null);
+  const unconfirmed = useRef<UnconfirmedAttempt | null>(null);
 
   const [draft, setDraft] = useState("");
   const [local, setLocal] = useState<LocalMessage[]>([]);
@@ -288,8 +288,8 @@ export function ComplaintThread({ complaint, viewerName }: { complaint: Complain
   function send() {
     const body = draft.trim();
     if (!isSendable(body) || sendReply.isPending) return;
-    const key = idForReply(unconfirmed.current, body);
-    unconfirmed.current = { id: key, body };
+    const key = idForAttempt(unconfirmed.current, body, newMessageId);
+    unconfirmed.current = { id: key, content: body };
     setLocal((l) => [
       ...l,
       { id: key, key, senderRole: "LANDLORD", senderName: viewerName, body, imageUrls: [], createdAt: new Date(), sending: true },
