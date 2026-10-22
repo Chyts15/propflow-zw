@@ -21,17 +21,7 @@ export const LANDLORD_DARK = {
 export const FOCUS_RING =
   "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-brand-primary-light";
 
-// Legacy complaint-card token: one colour used for both the card fill AND its glow, which breaks
-// the Decoupled Glow Rule (DESIGN.md). The dashboard cards still read it; complaint screens use
-// PRIORITY_FILL and PRIORITY_UNDERGLOW below. Remove once the dashboard has moved over.
-export const PRIORITY_GLOW: Record<string, string> = {
-  CRITICAL: "#7a1410",
-  HIGH: "#7a2f10",
-  MEDIUM: "#7a5a10",
-  LOW: "#3a2216",
-};
-
-// Complaint cards: a dark tonal fill (so white text keeps contrast) and, separately, the colour of
+// Complaint cards (the queue and the dashboard): a dark tonal fill (so white text keeps contrast) and, separately, the colour of
 // the underglow. The two are allowed to differ and do: the glow is the brighter hue of the same
 // family. Settled (resolved or closed) cards take RESOLVED_CARD_FILL and no glow.
 export const PRIORITY_FILL: Record<string, string> = {

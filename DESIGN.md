@@ -33,9 +33,13 @@ colors:
   on-dark-warning: "#fbbf24"
   on-dark-danger: "#f87171"
   on-dark-info: "#60a5fa"
-  glow-critical: "#7a1410"
-  glow-high: "#7a2f10"
-  glow-medium: "#7a5a10"
+  complaint-fill-critical: "#3d1311"
+  complaint-fill-high: "#3b1f10"
+  complaint-fill-medium: "#33270e"
+  complaint-fill-low: "#1f130d"
+  underglow-critical: "#dc2626"
+  underglow-high: "#ea580c"
+  underglow-medium: "#ca8a04"
   ecocash: "#00a850"
   onemoney: "#e30613"
   innbucks: "#f7a800"
@@ -107,7 +111,7 @@ components:
     rounded: "{rounded.2xl}"
     padding: "24px"
   complaint-card-critical:
-    backgroundColor: "{colors.glow-critical}"
+    backgroundColor: "{colors.complaint-fill-critical}"
     textColor: "#ffffff"
     rounded: "{rounded.2xl}"
     padding: "12px"
@@ -189,13 +193,13 @@ A warm, earthy palette: terracotta and teal as two equal-weight brand voices ove
 
 ### Status and payment colors
 - **Status text on dark** (`on-dark-success` #4ade80, `on-dark-warning` #fbbf24, `on-dark-danger` #f87171, `on-dark-info` #60a5fa) is paired with the same hue at 15 to 18% opacity as a pill fill. Solid `success`, `warning`, `danger`, `info` are the light-theme equivalents.
-- **Complaint priority** is carried by the card's own fill: `glow-critical` #7a1410, `glow-high` #7a2f10, `glow-medium` #7a5a10, low uses `ember-line`.
+- **Complaint priority** is carried by two separate tokens. The card fill is a dark tone of the priority's hue, so white text keeps its contrast: `complaint-fill-critical` #3d1311, `complaint-fill-high` #3b1f10, `complaint-fill-medium` #33270e, `complaint-fill-low` #1f130d. The underglow is the brighter hue of the same family: `underglow-critical` #dc2626, `underglow-high` #ea580c, `underglow-medium` #ca8a04. Low priority has no visible glow. Resolved and closed cards take the low fill and no glow. The priority is also written on the card ("HIGH · OPEN"), so color is never the only signal.
 - **Payment methods** use their real brand colors as tints: EcoCash `ecocash`, OneMoney `onemoney`, InnBucks `innbucks`; Bank uses a blue tint; cash is a neutral white tint.
 
 ### Named Rules
 **The One Voice Rule.** Each portal has one brand voice: terracotta for landlords, teal for tenants. They never share a screen as competing accents.
 **The Warm Ground Rule.** Every neutral is warm. A cold grey, pure black, or blue-tinted neutral is a defect.
-**The Decoupled Glow Rule.** A complaint card's glow color is its own token, separate from its background. The two are allowed to differ.
+**The Decoupled Glow Rule.** A complaint card's glow color is its own token, separate from its background. The two are allowed to differ, and they do: the fill is dark, the glow is bright. The queue and the dashboard both follow it.
 
 ## Typography
 
@@ -229,7 +233,7 @@ Density is higher on landlord screens (scanning many units) and looser on tenant
 Flat by default. Depth comes from tonal layering (Night Earth, then Hearth, then Ember Card) and a 1px Ember Line border, not from shadows. There are exactly two exceptions: the urgency glow on complaint cards, and the drop shadow on small floating popovers.
 
 ### Shadow Vocabulary
-- **Urgency glow** (`box-shadow: 0 0 20px -10px <priority fill>` in the list panel, `0 0 24px -8px <priority fill>` on the dashboard): a soft underlight in the card's own priority color. It signals urgency and nothing else.
+- **Urgency glow** (`box-shadow: 0 0 22px -8px <underglow>` in the list panel, `0 0 24px -8px <underglow>` on the dashboard): a soft underlight in the priority's own underglow color, never the card's fill. It signals urgency and nothing else, so resolved and closed cards have none.
 - **Popover** (`shadow-lg`): floating panels such as the upgrade prompt, anchored under the control that triggered them.
 - **Dialog scrim** (black at 10% with a slight backdrop blur): behind modal dialogs, which are bordered with a 1px ring rather than a shadow.
 
@@ -273,7 +277,7 @@ Small pills (mono or Inter 11px, 2px by 8px) with hue-matched text on a 15 to 18
 - **Mobile:** a 56px top bar (logo, notifications) and a 64px bottom tab bar with 20px icons and 10px labels. Active is terracotta.
 
 ### Complaint card (signature)
-A full-width card filled with its priority tone (critical red, high burnt orange, medium amber) carrying "Unit 4B · Tenant name", relative time, and a one-line title, with a soft glow in the same hue. The active card in the master-detail list gets a 2px Msasa Glow outline. Text is white at 100% and 80%.
+A full-width card with a dark fill tinted toward its priority (critical red, high burnt orange, medium amber) carrying "Unit 4B · Tenant name", relative time, a one-line title and a text line such as "HIGH · OPEN", with a soft underglow in the brighter hue of the same family. Resolved and closed cards are flat. The active card in the master-detail list gets a 2px Msasa Glow outline. Text is white at 100% and 80%.
 
 ### Hero stat (signature)
 The on-time collections card: a mono eyebrow, a 48px Display number, and a green or red trend line with an arrow icon. One per screen.

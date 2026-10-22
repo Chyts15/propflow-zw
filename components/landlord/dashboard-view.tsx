@@ -9,7 +9,8 @@ import { ExchangeRatePill } from "@/components/shared/exchange-rate-pill";
 import {
   FOCUS_RING,
   LANDLORD_DARK,
-  PRIORITY_GLOW,
+  PRIORITY_FILL,
+  PRIORITY_UNDERGLOW,
   PAYMENT_BADGE,
   PAYMENT_LABEL,
   RENT_STATUS_BADGE,
@@ -515,8 +516,8 @@ export function DashboardView({
                       i >= 2 ? "hidden sm:block" : ""
                     }`}
                     style={{
-                      backgroundColor: PRIORITY_GLOW[c.priority] ?? t.cardBg,
-                      boxShadow: `0 0 24px -8px ${PRIORITY_GLOW[c.priority]}`,
+                      backgroundColor: PRIORITY_FILL[c.priority] ?? t.cardBg,
+                      boxShadow: PRIORITY_UNDERGLOW[c.priority] ? `0 0 24px -8px ${PRIORITY_UNDERGLOW[c.priority]}` : undefined,
                     }}
                   >
                     <div className="flex items-center justify-between gap-3">
