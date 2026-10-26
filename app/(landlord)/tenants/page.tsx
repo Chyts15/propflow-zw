@@ -6,7 +6,7 @@ import { getPendingInvitesForOrg } from "@/lib/invitations";
 import { noInviteReason } from "@/lib/invites";
 import { formatLongDate } from "@/lib/dates";
 import { parseCursor } from "@/lib/pagination";
-import { compareUnitNumbers } from "@/lib/unit-display";
+import { compareUnitNumbers, unitLabel } from "@/lib/unit-display";
 import { ListPager } from "@/components/landlord/list-pager";
 import { InviteTenantDialog } from "@/components/landlord/invite-tenant-dialog";
 import { PendingInviteActions } from "@/components/landlord/pending-invite-actions";
@@ -169,7 +169,7 @@ export default async function TenantsPage({ searchParams }: { searchParams: Prom
                     {tn.tenant.name}
                   </p>
                   <p className="text-xs break-words" style={{ color: t.fgMuted }}>
-                    Unit {tn.unit.unitNumber} · {tn.tenant.email}
+                    {unitLabel({ unitNumber: tn.unit.unitNumber, propertyName: tn.unit.property.name })} · {tn.tenant.email}
                     {tn.tenant.phone && ` · ${tn.tenant.phone}`}
                   </p>
                 </div>

@@ -817,7 +817,7 @@ export async function getTenanciesForOrg(orgId: string, { cursor }: Cursor = {})
     orderBy: { createdAt: "desc" },
     include: {
       tenant: { select: { id: true, name: true, phone: true, email: true, smsOptIn: true } },
-      unit: { select: { unitNumber: true, propertyId: true } },
+      unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } },
     },
   });
   return paginate(items);
