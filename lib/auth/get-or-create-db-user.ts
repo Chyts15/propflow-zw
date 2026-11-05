@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
@@ -15,8 +16,14 @@ import type { User } from "@/generated/prisma/client";
  *
  * Does not change the webhook's own behavior or logic — only replicates it
  * for the case where the webhook hasn't run yet.
+ *
+ * Wrapped in React's `cache`, so within one request the layout and the page that both ask for the
+ * same signed-in user share a single lookup instead of querying twice. The cache lives for that
+ * request only, so a later request always reads fresh data.
  */
-export async function getOrCreateDbUser(clerkId: string): Promise<User> {
+export const getOrCreateDbUser = cache(loadOrCreateDbUser);
+
+async function loadOrCreateDbUser(clerkId: string): Promise<User> {
   const existing = await prisma.user.findUnique({ where: { clerkId } });
   if (existing) return existing;
 
