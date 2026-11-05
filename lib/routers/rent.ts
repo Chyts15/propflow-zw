@@ -4,7 +4,8 @@ import {
   getRentRecordsForOrg,
   getRentHistoryForTenant,
   getRentLedgerStats,
-  markRentRecordPaid,
+  recordRentPayment,
+  undoRentPayment,
   setManualExchangeRate,
   submitPaymentProofForTenant,
   generateRentRecordsForPeriod,
@@ -12,6 +13,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
+import { isOwnUploadUrl, rentProofPrefix } from "@/lib/storage/upload-url";
 import { uploadRateLimit } from "@/lib/rate-limit";
 
 const PAYMENT_METHODS = ["ECOCASH", "ONEMONEY", "INNBUCKS", "BANK_TRANSFER", "CASH_USD", "CASH_ZIG"] as const;
@@ -47,7 +49,8 @@ export const rentRouter = router({
     .input(z.object({ periodMonth: z.number().int().min(1).max(12), periodYear: z.number().int() }))
     .mutation(({ ctx, input }) => generateRentRecordsForPeriod(input.periodMonth, input.periodYear, ctx.orgId)),
 
-  // Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
+  // Records money RECEIVED against a rent record: PAID when it covers what is due, PARTIAL when
+  // it does not. Writes a PaymentEvent alongside the RentRecord update — spec: Security §3.
   markPaid: landlordWriteProcedure
     .input(
       z
@@ -55,7 +58,7 @@ export const rentRouter = router({
           rentRecordId: z.string().cuid(),
           method: z.enum(PAYMENT_METHODS),
           referenceNo: z.string().max(40).optional(),
-          amountUsd: z.number().positive(),
+          amountUsd: z.number().positive().max(1_000_000),
         })
         .superRefine((val, ctx) => {
           if (val.method === "ECOCASH" && !ECOCASH_REF.test(val.referenceNo ?? "")) {
@@ -67,7 +70,13 @@ export const rentRouter = router({
           }
         }),
     )
-    .mutation(({ ctx, input }) => markRentRecordPaid(ctx.orgId, ctx.dbUser.id, input)),
+    .mutation(({ ctx, input }) => recordRentPayment(ctx.orgId, ctx.dbUser.id, input)),
+
+  // Takes back the latest payment still standing on a record, as a new negative PaymentEvent.
+  // The client names the payment it is undoing so a stale screen cannot reverse a different one.
+  undoPayment: landlordWriteProcedure
+    .input(z.object({ rentRecordId: z.string().cuid(), paymentEventId: z.string().cuid() }))
+    .mutation(({ ctx, input }) => undoRentPayment(ctx.orgId, ctx.dbUser.id, input)),
 
   // Tenant reads of their own rent history/proof — never gated by org billing
   // status, including PAST_DUE/CANCELLED (CLAUDE.md § Tier Gating & Tenant Access).
@@ -84,7 +93,7 @@ export const rentRouter = router({
           rentRecordId: z.string().cuid(),
           method: z.enum(PAYMENT_METHODS),
           referenceNo: z.string().max(40).optional(),
-          proofImageUrl: z.string().url(),
+          proofImageUrl: z.string().url().max(2048),
         })
         .superRefine((val, ctx) => {
           if (val.method === "ECOCASH" && !ECOCASH_REF.test(val.referenceNo ?? "")) {
@@ -97,6 +106,14 @@ export const rentRouter = router({
         }),
     )
     .mutation(({ ctx, input }) => {
+      // Only a photo this tenant uploaded through getUploadUrl below can be attached: any other
+      // address would be loaded by the landlord's screen.
+      if (!isOwnUploadUrl(input.proofImageUrl, process.env.R2_PUBLIC_URL, rentProofPrefix(ctx.dbUser.id))) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "That photo wasn't uploaded through PropFlow. Please choose it again.",
+        });
+      }
       const { rentRecordId, ...data } = input;
       return submitPaymentProofForTenant(ctx.dbUser.id, rentRecordId, data);
     }),
@@ -116,7 +133,7 @@ export const rentRouter = router({
       const { success } = await uploadRateLimit(ctx.dbUser.id);
       if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many uploads — try again later" });
       const ext = input.contentType.split("/")[1];
-      const key = `rent-proof/${ctx.dbUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const key = `${rentProofPrefix(ctx.dbUser.id)}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       return createUploadUrl({ key, contentType: input.contentType, contentLength: input.contentLength });
     }),
 

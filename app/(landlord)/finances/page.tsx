@@ -1,40 +1,63 @@
-import { Bell } from "lucide-react";
+import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
+import { periodOf, ymdOf } from "@/lib/rent-timing";
 import { getOrCreateDbUser } from "@/lib/auth/get-or-create-db-user";
 import { getRentRecordsForOrg, getRentLedgerStats } from "@/lib/db/scoped";
 import { resolveExchangeRate } from "@/lib/exchange-rate";
+import { parseCursor } from "@/lib/pagination";
+import { ListPager } from "@/components/landlord/list-pager";
 import { MonthSelector } from "@/components/landlord/month-selector";
 import { RentLedger } from "@/components/landlord/rent-ledger";
 import { GenerateRentButton } from "@/components/landlord/generate-rent-button";
-import { LANDLORD_DARK } from "@/components/landlord/theme";
+import { FOCUS_RING, LANDLORD_DARK } from "@/components/landlord/theme";
 
 export default async function FinancesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; cursor?: string }>;
 }) {
-  const { month } = await searchParams;
+  const { month, cursor: rawCursor } = await searchParams;
+  const cursor = parseCursor(rawCursor);
   const { userId } = await auth();
   const user = await getOrCreateDbUser(userId!);
   const orgId = user.orgId!;
   const t = LANDLORD_DARK;
 
-  const now = new Date();
-  const [yearStr, monthStr] = (month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`).split("-");
-  const periodYear = Number(yearStr);
-  const periodMonth = Number(monthStr);
+  // The current month in Zimbabwe time, not the server's (UTC): for the first two hours of a month
+  // in Harare the server clock is still on the old one. A malformed ?month= falls back to it
+  // instead of becoming NaN, which used to drop the month filter and list every period.
+  const current = periodOf(ymdOf(new Date()));
+  const valid = typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const periodYear = valid ? Number(month.slice(0, 4)) : current.year;
+  const periodMonth = valid ? Number(month.slice(5, 7)) : current.month;
 
-  const [stats, { items: records }, rate] = await Promise.all([
+  // The ledger is paged: rows past the first page used to be unreachable while the tiles above
+  // still summed them. The cursor is in the URL, next to the month, so a refresh stays on the page.
+  const [stats, { items: records, nextCursor }, rate] = await Promise.all([
     getRentLedgerStats(orgId, periodMonth, periodYear),
-    getRentRecordsForOrg(orgId, { periodMonth, periodYear }),
+    getRentRecordsForOrg(orgId, { periodMonth, periodYear, cursor }),
     resolveExchangeRate(orgId),
   ]);
 
-  const statCards = [
+  // Overdue is "as of today" across all months, the same figure the dashboard shows. When part of
+  // it belongs to earlier months it is called out with a link, so the units behind the number
+  // can always be found even though the table below is one month.
+  const earlierLink = stats.oldestOverdue
+    ? `/finances?month=${stats.oldestOverdue.year}-${String(stats.oldestOverdue.month).padStart(2, "0")}`
+    : null;
+  const statCards: { label: string; value: number; color: string; note?: string }[] = [
     { label: "RECEIVABLE", value: stats.receivable, color: t.fg },
     { label: "COLLECTED", value: stats.collected, color: "#4ade80" },
     { label: "OUTSTANDING", value: stats.outstanding, color: "#fbbf24" },
-    { label: "OVERDUE 30+", value: stats.overdue30Plus, color: "#f87171" },
+    {
+      label: "OVERDUE NOW",
+      value: stats.overdueUsd,
+      color: "#f87171",
+      note:
+        stats.overdueUnitCount === 0
+          ? "Nobody is late"
+          : `${stats.overdueUnitCount} ${stats.overdueUnitCount === 1 ? "unit" : "units"} past due`,
+    },
   ];
 
   return (
@@ -45,14 +68,6 @@ export default async function FinancesPage({
         </h1>
         <div className="hidden items-center gap-3 sm:flex">
           <MonthSelector value={`${periodYear}-${String(periodMonth).padStart(2, "0")}`} />
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-full"
-            style={{ backgroundColor: t.cardBg, border: `1px solid ${t.cardBorder}`, color: t.fgMuted }}
-            aria-label="Notifications"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
         </div>
       </div>
       <div className="mt-2 sm:hidden">
@@ -65,14 +80,32 @@ export default async function FinancesPage({
             <p className="font-mono text-[10px] tracking-wide" style={{ color: t.fgMuted }}>
               {s.label}
             </p>
-            <p className="font-heading mt-1 text-xl font-extrabold sm:text-2xl" style={{ color: s.color }}>
-              ${s.value.toLocaleString()}
+            <p className="font-heading mt-1 text-xl font-extrabold tabular-nums sm:text-2xl" style={{ color: s.color }}>
+              ${s.value.toLocaleString("en-US")}
             </p>
+            {s.note && (
+              <p className="mt-0.5 text-xs" style={{ color: t.fgMuted }}>
+                {s.note}
+              </p>
+            )}
+            {s.label === "OVERDUE NOW" && stats.overdueEarlierUsd > 0 && earlierLink && (
+              <Link
+                href={earlierLink}
+                className={`mt-1 inline-flex min-h-11 items-center text-xs underline underline-offset-2 sm:min-h-0 ${FOCUS_RING}`}
+                style={{ color: t.accentLight }}
+              >
+                ${stats.overdueEarlierUsd.toLocaleString("en-US")} is from earlier months →
+              </Link>
+            )}
           </div>
         ))}
       </div>
 
-      {records.length === 0 ? (
+      {records.length === 0 && cursor ? (
+        <p className="mt-8 text-sm" style={{ color: t.fgMuted }}>
+          There are no more rent records for this month.
+        </p>
+      ) : records.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: t.cardBorder }}>
           <p className="font-heading text-lg font-extrabold" style={{ color: t.fg }}>
             No rent records for this period
@@ -88,6 +121,14 @@ export default async function FinancesPage({
       ) : (
         <RentLedger records={records} rate={rate} />
       )}
+
+      <ListPager
+        basePath="/finances"
+        query={{ month: `${periodYear}-${String(periodMonth).padStart(2, "0")}` }}
+        cursor={cursor}
+        nextCursor={nextCursor}
+        noun="rent records"
+      />
     </div>
   );
 }

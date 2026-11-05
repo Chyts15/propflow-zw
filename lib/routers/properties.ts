@@ -18,7 +18,7 @@ const propertyInput = z.object({
   city: z.string().min(1).max(120),
   province: z.string().min(1).max(120),
   type: z.enum(PROPERTY_TYPES),
-  totalUnits: z.number().int().min(1).max(1000),
+  // No totalUnits: a property starts with no units and the count follows the units that are added.
   primaryCurrency: z.enum(CURRENCIES).default("USD"),
   description: z.string().max(2000).optional(),
 });

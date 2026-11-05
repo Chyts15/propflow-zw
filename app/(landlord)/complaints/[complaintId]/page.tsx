@@ -22,5 +22,7 @@ export default async function ComplaintDetailPage({
     throw err;
   }
 
-  return <ComplaintThread complaint={complaint} />;
+  // Keyed by complaint so the reply draft and any unconfirmed change never follow the landlord
+  // from one complaint to the next.
+  return <ComplaintThread key={complaint.id} complaint={complaint} viewerName={user.name} />;
 }

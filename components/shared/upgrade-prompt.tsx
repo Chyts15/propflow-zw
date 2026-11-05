@@ -1,14 +1,14 @@
 import Link from "next/link";
 
 // Spec: CLAUDE.md § Tier Gating — "render blurred with UpgradePrompt →
-// /settings/billing" for any over-limit landlord feature. Anchored as its
-// own popover below-right of the gated control rather than stretched to
-// match it — the control (e.g. a small pill button) is usually too narrow
-// to hold the message text itself.
+// /settings/billing" for any over-limit landlord feature. Sits in normal flow
+// under the gated control, which is usually too narrow to hold the message
+// itself. It used to be an absolutely positioned popover, which laid over
+// whatever came next (the first unit row, on the property page).
 export function UpgradePrompt({ message }: { message: string }) {
   return (
     <div
-      className="absolute right-0 top-full z-10 mt-2 w-64 rounded-xl p-3 text-center shadow-lg"
+      className="w-full max-w-xs rounded-xl p-3 text-center"
       style={{ backgroundColor: "#1f130d", border: "1px solid #3a2216" }}
     >
       <p className="text-xs text-white/90">{message}</p>

@@ -1,11 +1,27 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/db";
+import {
+  balanceUsd,
+  daysLate,
+  dueYmd,
+  isOverdueRecord,
+  periodOf,
+  summarizeOnTime,
+  summarizeOverdue,
+  ymdOf,
+  type OwingRentRecord,
+  type TimedRentRecord,
+} from "@/lib/rent-timing";
+import { afterReversal, checkPayment, paymentRefusal, proofRefusal, undoablePayment } from "@/lib/rent-payments";
+import { nextPeriodEnd, type PaidTier } from "@/lib/billing-plan";
+import { round2 } from "@/lib/money";
 import type {
   Currency,
   PropertyType,
   ComplaintStatus,
   ComplaintPriority,
+  RentStatus,
   UserRole,
   SubscriptionTier,
   Prisma,
@@ -45,12 +61,13 @@ export async function createPropertyForOrg(
     city: string;
     province: string;
     type: PropertyType;
-    totalUnits: number;
+    /** Only the seed passes this. A new property has no units, and createUnitForOrg keeps the count true. */
+    totalUnits?: number;
     primaryCurrency: Currency;
     description?: string;
   },
 ) {
-  return prisma.property.create({ data: { ...data, orgId, ownerId } });
+  return prisma.property.create({ data: { ...data, totalUnits: data.totalUnits ?? 0, orgId, ownerId } });
 }
 
 export async function getPropertyForOrg(orgId: string, propertyId: string) {
@@ -121,9 +138,24 @@ export async function createUnitForOrg(
     description?: string;
   },
 ) {
-  const property = await prisma.property.findFirst({ where: { id: propertyId, orgId }, select: { id: true } });
+  const property = await prisma.property.findFirst({ where: { id: propertyId, orgId }, select: { id: true, name: true } });
   if (!property) throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
-  return prisma.unit.create({ data: { ...data, propertyId } });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const unit = await tx.unit.create({ data: { ...data, propertyId } });
+      await syncTotalUnits(tx, propertyId);
+      return unit;
+    });
+  } catch (err) {
+    // (propertyId, unitNumber) is unique. Adding "04" twice used to surface as a raw database error.
+    if ((err as { code?: string } | null)?.code === "P2002") {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: `${property.name} already has a Unit ${data.unitNumber}. Use a different unit number.`,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function getUnitForOrg(orgId: string, unitId: string) {
@@ -154,17 +186,43 @@ export async function updateUnitForOrg(
 }
 
 export async function deleteUnitForOrg(orgId: string, unitId: string) {
-  const { count } = await prisma.unit.deleteMany({ where: { id: unitId, property: { orgId } } });
-  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+  const unit = await prisma.unit.findFirst({ where: { id: unitId, property: { orgId } }, select: { propertyId: true } });
+  if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+  await prisma.$transaction(async (tx) => {
+    await tx.unit.delete({ where: { id: unitId } });
+    await syncTotalUnits(tx, unit.propertyId);
+  });
 }
 
-export async function getComplaintsForOrg(orgId: string, { cursor }: Cursor = {}) {
+// Property.totalUnits is the number of units the property really has. It used to be a number the
+// landlord typed in, which nothing created or checked, so it is now kept equal to the count.
+async function syncTotalUnits(tx: Prisma.TransactionClient, propertyId: string) {
+  const totalUnits = await tx.unit.count({ where: { propertyId } });
+  await tx.property.update({ where: { id: propertyId }, data: { totalUnits } });
+}
+
+export async function getComplaintsForOrg(
+  orgId: string,
+  {
+    cursor,
+    statuses,
+    order = "urgency",
+  }: Cursor & {
+    statuses?: readonly ComplaintStatus[];
+    /** "urgency": most urgent first (the queue). "recent": most recently touched first (resolved ones). */
+    order?: "urgency" | "recent";
+  } = {},
+) {
   const items = await prisma.complaint.findMany({
-    where: { unit: { property: { orgId } } },
+    where: { unit: { property: { orgId } }, ...(statuses ? { status: { in: [...statuses] } } : {}) },
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-    include: { unit: { select: { unitNumber: true, propertyId: true } } },
+    // The id is the last tiebreaker so the order is total and a cursor always lands on one row.
+    orderBy:
+      order === "recent"
+        ? [{ updatedAt: "desc" }, { id: "desc" }]
+        : [{ priority: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    include: { unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } } },
   });
 
   // Complaint.tenantId has no Prisma relation (matches the original schema
@@ -182,7 +240,7 @@ export async function getComplaintForOrg(orgId: string, complaintId: string) {
   const complaint = await prisma.complaint.findFirst({
     where: { id: complaintId, unit: { property: { orgId } } },
     include: {
-      unit: { select: { unitNumber: true, propertyId: true } },
+      unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } },
       messages: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -221,6 +279,10 @@ export async function updateComplaintPriority(orgId: string, complaintId: string
   if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
 }
 
+// The reply is saved under `messageId`, which the sending screen picks before the first attempt and
+// reuses when the landlord taps Try again. A lost response followed by a retry used to save the
+// reply twice; now the retry meets the row the first attempt wrote and gets that row back. The
+// primary key is the idempotency key, so this needs no extra column.
 export async function addComplaintMessageForOrg(
   orgId: string,
   complaintId: string,
@@ -228,34 +290,61 @@ export async function addComplaintMessageForOrg(
   senderRole: UserRole,
   body: string,
   imageUrls: string[],
+  messageId: string,
 ) {
   const complaint = await prisma.complaint.findFirst({
     where: { id: complaintId, unit: { property: { orgId } } },
     select: { id: true },
   });
   if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
-  return prisma.complaintMessage.create({
-    data: { complaintId, senderId, senderRole, body, imageUrls },
-  });
+  try {
+    return await prisma.complaintMessage.create({
+      data: { id: messageId, complaintId, senderId, senderRole, body, imageUrls },
+    });
+  } catch (err) {
+    if ((err as { code?: string } | null)?.code !== "P2002") throw err;
+    // The id is taken. It is a retry only if this same sender already saved this same reply on this
+    // complaint; the lookup is scoped that way, so a row belonging to anyone else is never read back.
+    const saved = await prisma.complaintMessage.findFirst({ where: { id: messageId, complaintId, senderId } });
+    if (saved && saved.body === body) return saved;
+    throw new TRPCError({ code: "CONFLICT", message: "That reply could not be saved. Please send it again." });
+  }
 }
 
 // Tenant creates a complaint only on their own unit — ctx.tenancy.unitId
 // (injected by tenantProcedure) is the source of truth, never a client-
 // supplied unitId.
+//
+// The complaint is saved under `data.id`, which the form picks before the first attempt and reuses
+// when the tenant taps Submit again after a response was lost on slow data. A retry meets the
+// complaint the first attempt wrote and gets it back, so one problem is never reported twice. The
+// primary key is the idempotency key, so this needs no extra column.
 export async function createComplaintForTenant(
   tenantId: string,
   unitId: string,
-  data: { title: string; description: string; category: string; imageUrls: string[] },
+  data: { id: string; title: string; description: string; category: string; imageUrls: string[] },
 ) {
-  return prisma.complaint.create({
-    data: { ...data, tenantId, unitId },
-  });
+  try {
+    return await prisma.complaint.create({
+      data: { ...data, tenantId, unitId },
+    });
+  } catch (err) {
+    if ((err as { code?: string } | null)?.code !== "P2002") throw err;
+    // The id is taken. It is a retry only if this tenant already filed this same complaint; the
+    // lookup is limited to their own, so a complaint belonging to anyone else is never read back.
+    const filed = await prisma.complaint.findFirst({ where: { id: data.id, tenantId } });
+    if (filed && filed.title === data.title && filed.description === data.description && filed.category === data.category) {
+      return filed;
+    }
+    throw new TRPCError({ code: "CONFLICT", message: "That complaint could not be saved. Please send it again." });
+  }
 }
 
 export async function getRentRecordsForOrg(
   orgId: string,
   { cursor, periodMonth, periodYear }: Cursor & { periodMonth?: number; periodYear?: number },
 ) {
+  const today = ymdOf(new Date());
   const items = await prisma.rentRecord.findMany({
     where: {
       unit: { property: { orgId } },
@@ -265,7 +354,14 @@ export async function getRentRecordsForOrg(
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: "desc" },
-    include: { unit: { select: { unitNumber: true, propertyId: true } } },
+    include: {
+      unit: { select: { unitNumber: true, propertyId: true, tenancy: { select: { rentDueDay: true } } } },
+      // Only used to work out which payment an undo would reverse; not sent to the client.
+      events: {
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, amountUsd: true, method: true, createdAt: true },
+      },
+    },
   });
 
   // RentRecord.tenantId has no Prisma relation (matches the original schema
@@ -273,9 +369,131 @@ export async function getRentRecordsForOrg(
   const tenantIds = [...new Set(items.map((r) => r.tenantId))];
   const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
   const nameById = new Map(tenants.map((t) => [t.id, t.name]));
-  const withTenantName = items.map((r) => ({ ...r, tenantName: nameById.get(r.tenantId) ?? "Unknown tenant" }));
 
-  return paginate(withTenantName);
+  const rows = items.map(({ events, unit, ...r }) => {
+    const timed = timedRecord({ ...r, unit });
+    const isOverdue = isOverdueRecord(timed, today);
+    const lastPayment = undoablePayment(events);
+    return {
+      ...r,
+      unit: { unitNumber: unit.unitNumber, propertyId: unit.propertyId },
+      tenantName: nameById.get(r.tenantId) ?? "Unknown tenant",
+      // The record has no due-date column; it is derived (see lib/rent-timing.ts) so the ledger
+      // and the dashboard can never disagree about who is late.
+      dueYmd: dueYmd(r.periodYear, r.periodMonth, unit.tenancy?.rentDueDay),
+      isOverdue,
+      daysLate: isOverdue ? daysLate(timed, today) : 0,
+      balanceUsd: balanceUsd(r),
+      lastPayment: lastPayment
+        ? { id: lastPayment.id, amountUsd: lastPayment.amountUsd!, method: lastPayment.method, createdAt: lastPayment.createdAt }
+        : null,
+    };
+  });
+
+  return paginate(rows);
+}
+
+// Landlord-dashboard "Rent status" panel: the current period's records, most
+// urgent first (overdue, then partial, then pending, then paid, then waived)
+// so the rows a landlord has to act on are never pushed out by paid ones.
+// Status enum order can't express that, so this sorts in memory. A period holds
+// at most one record per unit (@@unique unitId+period) and getDashboardStats
+// already reads the same set for its totals, so this is bounded by unit count;
+// only `limit` rows are returned.
+//
+// `isOverdue` is derived from the due date (see lib/rent-timing.ts), not read from
+// the status: nothing in the app ever sets RentStatus.OVERDUE, so a PENDING record
+// that is past due is reported as overdue here.
+const RENT_URGENCY: Record<RentStatus, number> = { OVERDUE: 0, PARTIAL: 1, PENDING: 2, PAID: 3, WAIVED: 4 };
+
+export async function getRentStatusPreviewForOrg(orgId: string, limit = 5) {
+  const today = ymdOf(new Date());
+  const { year: periodYear, month: periodMonth } = periodOf(today);
+  const records = await prisma.rentRecord.findMany({
+    // This month's records, plus anything still unpaid from earlier months: the dashboard's
+    // overdue total counts those, so the rows behind that total have to be listed too.
+    where: {
+      unit: { property: { orgId } },
+      OR: [{ periodMonth, periodYear }, { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } }],
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      amountDueUsd: true,
+      amountPaidUsd: true,
+      status: true,
+      paymentMethod: true,
+      proofImageUrl: true,
+      paidAt: true,
+      periodMonth: true,
+      periodYear: true,
+      unit: { select: { unitNumber: true, tenancy: { select: { rentDueDay: true } } } },
+    },
+  });
+
+  const rows = records
+    .map((r) => {
+      const timed = timedRecord(r);
+      const isOverdue = isOverdueRecord(timed, today);
+      return { ...r, isOverdue, lateDays: isOverdue ? daysLate(timed, today) : 0 };
+    })
+    .sort((a, b) => {
+      const proofA = a.proofImageUrl && a.status !== "PAID" ? 0 : 1;
+      const proofB = b.proofImageUrl && b.status !== "PAID" ? 0 : 1;
+      return (
+        (a.isOverdue ? 0 : RENT_URGENCY[a.status]) - (b.isOverdue ? 0 : RENT_URGENCY[b.status]) ||
+        proofA - proofB ||
+        b.lateDays - a.lateDays ||
+        b.amountDueUsd - a.amountDueUsd ||
+        a.unit.unitNumber.localeCompare(b.unit.unitNumber, undefined, { numeric: true })
+      );
+    })
+    .slice(0, limit);
+
+  // RentRecord.tenantId has no Prisma relation — same batched-lookup pattern
+  // as getRentRecordsForOrg, but only for the rows actually returned.
+  const tenantIds = [...new Set(rows.map((r) => r.tenantId))];
+  const tenants = await prisma.user.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } });
+  const nameById = new Map(tenants.map((t) => [t.id, t.name]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    unit: { unitNumber: r.unit.unitNumber },
+    tenantName: nameById.get(r.tenantId) ?? "Unknown tenant",
+    amountDueUsd: r.amountDueUsd,
+    amountPaidUsd: r.amountPaidUsd,
+    status: r.status,
+    isOverdue: r.isOverdue,
+    periodMonth: r.periodMonth,
+    periodYear: r.periodYear,
+    paymentMethod: r.paymentMethod,
+    proofImageUrl: r.proofImageUrl,
+  }));
+}
+
+// Adapts a Prisma rent record (with its unit's tenancy selected) to the shape the
+// pure timing rules take.
+function timedRecord(r: {
+  status: RentStatus;
+  paidAt: Date | null;
+  periodMonth: number;
+  periodYear: number;
+  unit: { tenancy: { rentDueDay: number } | null };
+}): TimedRentRecord {
+  return {
+    status: r.status,
+    paidAt: r.paidAt,
+    periodMonth: r.periodMonth,
+    periodYear: r.periodYear,
+    rentDueDay: r.unit.tenancy?.rentDueDay,
+  };
+}
+
+// The same adapter, for the records the overdue summary needs (amounts and the unit as well).
+function owingRecord(
+  r: { unitId: string; amountDueUsd: number; amountPaidUsd: number } & Parameters<typeof timedRecord>[0],
+): OwingRentRecord {
+  return { ...timedRecord(r), unitId: r.unitId, amountDueUsd: r.amountDueUsd, amountPaidUsd: r.amountPaidUsd };
 }
 
 export async function getRentRecordForOrg(orgId: string, rentRecordId: string) {
@@ -288,7 +506,15 @@ export async function getRentRecordForOrg(orgId: string, rentRecordId: string) {
 
 // Spec: Security §3 — RentRecord status changes are never destructive; every
 // change writes a PaymentEvent (who, what, when, previous status, new status).
-export async function markRentRecordPaid(
+//
+// Records what the landlord RECEIVED, added to anything already paid. The record becomes PAID
+// only when the money received covers what is due; a short payment leaves it PARTIAL with the
+// balance still owed (the rules are in lib/rent-payments.ts). The old version overwrote the paid
+// amount and always set PAID, so a $300 payment on $600 rent read as settled.
+//
+// The conditional write on updatedAt makes a second tab, or a double tap, fail loudly instead of
+// recording the same money twice.
+export async function recordRentPayment(
   orgId: string,
   actorId: string,
   input: {
@@ -298,52 +524,158 @@ export async function markRentRecordPaid(
     amountUsd: number;
   },
 ) {
-  const record = await getRentRecordForOrg(orgId, input.rentRecordId);
+  const received = round2(input.amountUsd);
 
-  const [updated] = await prisma.$transaction([
-    prisma.rentRecord.update({
-      where: { id: record.id },
+  return prisma.$transaction(async (tx) => {
+    const record = await tx.rentRecord.findFirst({
+      where: { id: input.rentRecordId, unit: { property: { orgId } } },
+    });
+    if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+
+    const check = checkPayment(record, received);
+    if (!check.ok) {
+      throw new TRPCError({
+        code: check.reason === "ALREADY_SETTLED" ? "CONFLICT" : "BAD_REQUEST",
+        message: paymentRefusal(check),
+      });
+    }
+
+    const { count } = await tx.rentRecord.updateMany({
+      where: { id: record.id, updatedAt: record.updatedAt },
       data: {
-        status: "PAID",
+        status: check.status,
         paymentMethod: input.method as never,
         referenceNo: input.referenceNo,
-        amountPaidUsd: input.amountUsd,
-        paidAt: new Date(),
+        amountPaidUsd: check.newPaidUsd,
+        paidAt: check.status === "PAID" ? new Date() : null,
       },
-    }),
-    prisma.paymentEvent.create({
+    });
+    if (count !== 1) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "This rent record was just changed. Refresh the page and try again.",
+      });
+    }
+
+    const event = await tx.paymentEvent.create({
       data: {
         rentRecordId: record.id,
         actorId,
         source: "MANUAL",
         fromStatus: record.status,
-        toStatus: "PAID",
-        amountUsd: input.amountUsd,
+        toStatus: check.status,
+        amountUsd: received,
         method: input.method as never,
         referenceNo: input.referenceNo,
+      },
+    });
+
+    const updated = await tx.rentRecord.findUniqueOrThrow({ where: { id: record.id } });
+    return { record: updated, paymentEventId: event.id };
+  });
+}
+
+// Takes back the latest payment still standing on a record. Money is never edited away: the undo
+// is a new PaymentEvent with a NEGATIVE amount, so the event history always sums to the record's
+// paid amount and shows who reversed what. Only the newest standing payment can be undone, and the
+// caller names it, so a stale screen cannot reverse a different payment than the one it showed.
+export async function undoRentPayment(
+  orgId: string,
+  actorId: string,
+  input: { rentRecordId: string; paymentEventId: string },
+) {
+  return prisma.$transaction(async (tx) => {
+    const record = await tx.rentRecord.findFirst({
+      where: { id: input.rentRecordId, unit: { property: { orgId } } },
+      include: {
+        events: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true, amountUsd: true, method: true, referenceNo: true, createdAt: true },
+        },
+      },
+    });
+    if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+
+    const target = undoablePayment(record.events);
+    if (!target || target.id !== input.paymentEventId) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "That payment was already undone, or a newer one was recorded. Refresh the page to see the latest.",
+      });
+    }
+
+    const reversedUsd = target.amountUsd!;
+    const after = afterReversal(record, reversedUsd);
+
+    const { count } = await tx.rentRecord.updateMany({
+      where: { id: record.id, updatedAt: record.updatedAt },
+      data: { amountPaidUsd: after.newPaidUsd, status: after.status, paidAt: null },
+    });
+    if (count !== 1) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "This rent record was just changed. Refresh the page and try again.",
+      });
+    }
+
+    await tx.paymentEvent.create({
+      data: {
+        rentRecordId: record.id,
+        actorId,
+        source: "MANUAL",
+        fromStatus: record.status,
+        toStatus: after.status,
+        amountUsd: -reversedUsd,
+        method: target.method as never,
+        referenceNo: target.referenceNo,
+      },
+    });
+
+    return tx.rentRecord.findUniqueOrThrow({ where: { id: record.id } });
+  });
+}
+
+export async function getRentLedgerStats(orgId: string, periodMonth: number, periodYear: number) {
+  const today = ymdOf(new Date());
+  const [records, unpaid] = await Promise.all([
+    prisma.rentRecord.findMany({
+      where: { unit: { property: { orgId } }, periodMonth, periodYear },
+      select: { amountDueUsd: true, amountPaidUsd: true },
+    }),
+    // Every unpaid record from any period, the same set the dashboard reads for its overdue total.
+    prisma.rentRecord.findMany({
+      where: { unit: { property: { orgId } }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+      select: {
+        unitId: true,
+        status: true,
+        amountDueUsd: true,
+        amountPaidUsd: true,
+        paidAt: true,
+        periodMonth: true,
+        periodYear: true,
+        unit: { select: { tenancy: { select: { rentDueDay: true } } } },
       },
     }),
   ]);
 
-  return updated;
-}
+  const receivable = round2(records.reduce((sum, r) => sum + r.amountDueUsd, 0));
+  const collected = round2(records.reduce((sum, r) => sum + r.amountPaidUsd, 0));
+  const outstanding = round2(receivable - collected);
 
-export async function getRentLedgerStats(orgId: string, periodMonth: number, periodYear: number) {
-  const records = await prisma.rentRecord.findMany({
-    where: { unit: { property: { orgId } }, periodMonth, periodYear },
-    select: { status: true, amountDueUsd: true, amountPaidUsd: true },
-  });
+  // Overdue is derived from due dates (nothing sets RentStatus.OVERDUE), through the one shared
+  // rule in lib/rent-timing.ts. It is "as of today", not per period: `overdueEarlierUsd` is the
+  // part that belongs to months before the one on screen, so the page can point at it.
+  const overdue = summarizeOverdue(unpaid.map(owingRecord), today);
 
-  const receivable = records.reduce((sum, r) => sum + r.amountDueUsd, 0);
-  const collected = records.reduce((sum, r) => sum + r.amountPaidUsd, 0);
-  const outstanding = receivable - collected;
-  // Schema tracks status, not per-record due-date aging, so "30+ days overdue"
-  // is approximated as the OVERDUE status bucket — see CLAUDE.md-adjacent note
-  // in the router: a real day-level aging calculation needs a due-date field
-  // this schema doesn't have.
-  const overdue30Plus = records.filter((r) => r.status === "OVERDUE").reduce((sum, r) => sum + r.amountDueUsd, 0);
-
-  return { receivable, collected, outstanding, overdue30Plus };
+  return {
+    receivable,
+    collected,
+    outstanding,
+    overdueUsd: overdue.usd,
+    overdueUnitCount: overdue.unitCount,
+    overdueEarlierUsd: overdue.usdBefore(periodYear * 100 + periodMonth),
+    oldestOverdue: overdue.oldest,
+  };
 }
 
 // Creates one RentRecord per active Tenancy for the given period. Called two
@@ -485,7 +817,7 @@ export async function getTenanciesForOrg(orgId: string, { cursor }: Cursor = {})
     orderBy: { createdAt: "desc" },
     include: {
       tenant: { select: { id: true, name: true, phone: true, email: true, smsOptIn: true } },
-      unit: { select: { unitNumber: true, propertyId: true } },
+      unit: { select: { unitNumber: true, propertyId: true, property: { select: { name: true } } } },
     },
   });
   return paginate(items);
@@ -504,6 +836,18 @@ export async function getVacantUnitsForOrg(orgId: string) {
     where: { property: { orgId }, isVacant: true },
     include: { property: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * The landlord's own vacant units among `unitIds`. This is the ownership check for invitations
+ * read back from Clerk: an invitation is only this org's if its unit is returned here.
+ */
+export async function getVacantUnitsByIdsForOrg(orgId: string, unitIds: string[]) {
+  if (unitIds.length === 0) return [];
+  return prisma.unit.findMany({
+    where: { id: { in: unitIds }, isVacant: true, property: { orgId } },
+    select: { id: true, unitNumber: true, property: { select: { name: true } } },
   });
 }
 
@@ -543,27 +887,45 @@ export async function setManualExchangeRate(orgId: string, usdToZig: number) {
 
 // ---- Dashboard ------------------------------------------------------------
 
-function pctPaid(records: { status: string }[]) {
-  return records.length === 0 ? 0 : Math.round((records.filter((r) => r.status === "PAID").length / records.length) * 100);
-}
-
 export async function getDashboardStats(orgId: string) {
-  const now = new Date();
-  const periodMonth = now.getMonth() + 1;
-  const periodYear = now.getFullYear();
-  const lastMonthDate = new Date(periodYear, periodMonth - 2, 1);
-  const lastPeriodMonth = lastMonthDate.getMonth() + 1;
-  const lastPeriodYear = lastMonthDate.getFullYear();
+  // Periods and "today" are Zimbabwe calendar days, not the server's (UTC) — see lib/rent-timing.ts.
+  const today = ymdOf(new Date());
+  const { year: periodYear, month: periodMonth } = periodOf(today);
+  const lastPeriodMonth = periodMonth === 1 ? 12 : periodMonth - 1;
+  const lastPeriodYear = periodMonth === 1 ? periodYear - 1 : periodYear;
+  // What the timing rules need from each record: when it was paid, which period it
+  // belongs to, and its tenancy's due day.
+  const timing = {
+    paidAt: true,
+    periodMonth: true,
+    periodYear: true,
+    unit: { select: { tenancy: { select: { rentDueDay: true } } } },
+  } as const;
 
-  const [units, rentRecords, lastMonthRentRecords, openComplaints, criticalComplaints, org] = await Promise.all([
+  const [
+    units,
+    propertyCount,
+    rentRecords,
+    lastMonthRentRecords,
+    unpaidRecords,
+    openComplaints,
+    criticalComplaints,
+    org,
+  ] = await Promise.all([
     prisma.unit.findMany({ where: { property: { orgId } }, select: { isVacant: true } }),
+    prisma.property.count({ where: { orgId } }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth, periodYear },
-      select: { status: true, amountDueUsd: true, amountPaidUsd: true },
+      select: { status: true, amountDueUsd: true, amountPaidUsd: true, proofImageUrl: true, ...timing },
     }),
     prisma.rentRecord.findMany({
       where: { unit: { property: { orgId } }, periodMonth: lastPeriodMonth, periodYear: lastPeriodYear },
-      select: { status: true },
+      select: { status: true, ...timing },
+    }),
+    // Every unpaid record from any period: rent still owed from earlier months is overdue too.
+    prisma.rentRecord.findMany({
+      where: { unit: { property: { orgId } }, status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+      select: { unitId: true, status: true, amountDueUsd: true, amountPaidUsd: true, ...timing },
     }),
     prisma.complaint.count({
       where: { unit: { property: { orgId } }, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_PARTS"] } },
@@ -578,19 +940,37 @@ export async function getDashboardStats(orgId: string) {
   const totalUnits = units.length;
   const dueUsd = rentRecords.reduce((sum, r) => sum + r.amountDueUsd, 0);
   const collectedUsd = rentRecords.reduce((sum, r) => sum + r.amountPaidUsd, 0);
-  const onTimeCollectionsPct = pctPaid(rentRecords);
+  // On-time = paid on or before the due date, over the rent that has fallen due. Last
+  // month is finished, so the two rates compare fairly even early in this month.
+  const onTime = summarizeOnTime(rentRecords.map(timedRecord), today);
+  const lastMonthOnTime = summarizeOnTime(lastMonthRentRecords.map(timedRecord), today);
+  const onTimeCollectionsPct = onTime.pct;
   const onTimeCollectionsTrend =
-    lastMonthRentRecords.length === 0 ? null : onTimeCollectionsPct - pctPaid(lastMonthRentRecords);
+    onTime.pct == null || lastMonthOnTime.pct == null ? null : onTime.pct - lastMonthOnTime.pct;
+
+  // Money still owed past its due date (derived — nothing sets the OVERDUE status), and how
+  // many tenant proofs are waiting on the landlord.
+  const overdue = summarizeOverdue(unpaidRecords.map(owingRecord), today);
+  const overdueUsd = overdue.usd;
+  const overdueCount = overdue.unitCount;
+  const proofsToReview = rentRecords.filter((r) => r.proofImageUrl && r.status !== "PAID").length;
 
   return {
     orgName: org.name,
     smsCredits: org.smsCredits,
+    propertyCount,
     totalUnits,
     occupiedUnits,
     dueUsd,
     collectedUsd,
+    rentRecordCount: rentRecords.length,
+    overdueCount,
+    overdueUsd,
+    proofsToReview,
     onTimeCollectionsPct,
     onTimeCollectionsTrend,
+    onTimeDue: onTime.due,
+    onTimeCount: onTime.onTime,
     openComplaints,
     criticalComplaints,
   };
@@ -631,20 +1011,54 @@ export async function getRentHistoryForTenant(tenantId: string, { cursor }: Curs
 
 // Tenant submits proof of a payment they already made directly to the
 // landlord (EcoCash/bank/cash) — this is NOT the landlord confirming receipt
-// (that's markRentRecordPaid, which is what actually writes the PaymentEvent
-// per Security §3). Submitting proof only records the tenant's claim; the
-// RentRecord stays PENDING until the landlord confirms via Mark Paid.
+// (that's recordRentPayment, which moves the money). Submitting proof only records the tenant's
+// claim; the RentRecord keeps its status and amounts until the landlord confirms via Mark Paid.
+//
+// The claim still changes the record (method, reference and photo are overwritten), so it writes a
+// PaymentEvent in the same transaction: the tenant as actor, the status unchanged, and no amount,
+// because nothing has been received yet. The history keeps what was claimed and when even after a
+// later submission replaces the record's fields. undoablePayment ignores events without an amount,
+// so a claim can never be mistaken for a payment an undo would reverse.
 export async function submitPaymentProofForTenant(
   tenantId: string,
   rentRecordId: string,
   data: { method: string; referenceNo?: string; proofImageUrl: string },
 ) {
-  const { count } = await prisma.rentRecord.updateMany({
-    where: { id: rentRecordId, tenantId },
-    data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
+  return prisma.$transaction(async (tx) => {
+    // Evidence on rent that is already paid or waived is never replaced: a resubmission used to
+    // overwrite the method and reference the landlord had confirmed.
+    const record = await tx.rentRecord.findFirst({ where: { id: rentRecordId, tenantId }, select: { status: true } });
+    if (!record) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
+    const refusal = proofRefusal(record.status);
+    if (refusal) throw new TRPCError({ code: "CONFLICT", message: refusal });
+
+    // The write is conditional on the status just read, so a payment the landlord confirmed a
+    // moment ago still wins, and the event below never states a status the record no longer has.
+    const { count } = await tx.rentRecord.updateMany({
+      where: { id: rentRecordId, tenantId, status: record.status },
+      data: { paymentMethod: data.method as never, referenceNo: data.referenceNo, proofImageUrl: data.proofImageUrl },
+    });
+    if (count !== 1) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "This month's rent was just updated, so the proof was not saved. Refresh the page and try again.",
+      });
+    }
+
+    await tx.paymentEvent.create({
+      data: {
+        rentRecordId,
+        actorId: tenantId,
+        source: "MANUAL",
+        fromStatus: record.status,
+        toStatus: record.status,
+        method: data.method as never,
+        referenceNo: data.referenceNo,
+      },
+    });
+
+    return tx.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
   });
-  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Rent record not found" });
-  return prisma.rentRecord.findUniqueOrThrow({ where: { id: rentRecordId } });
 }
 
 export async function getComplaintsForTenant(tenantId: string, { cursor }: Cursor = {}) {
@@ -653,8 +1067,43 @@ export async function getComplaintsForTenant(tenantId: string, { cursor }: Curso
     take: PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: "desc" },
+    // The newest landlord reply and how many there are, so the list can say a reply is waiting
+    // without loading every thread.
+    include: {
+      messages: { where: { senderRole: "LANDLORD" }, orderBy: { createdAt: "desc" }, take: 1, select: { body: true, createdAt: true } },
+      _count: { select: { messages: { where: { senderRole: "LANDLORD" } } } },
+    },
   });
   return paginate(items);
+}
+
+// How many messages one thread shows (the newest). A thread is a short conversation, so this is a
+// ceiling that is not expected to be reached, not a page size.
+const THREAD_LIMIT = 100;
+
+// A tenant reads one of their own complaints with its replies. Scoped to tenantId and, like every
+// tenant read, never gated by the landlord's billing status (CLAUDE.md § Tier Gating & Tenant Access).
+export async function getComplaintForTenant(tenantId: string, complaintId: string) {
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: complaintId, tenantId },
+    include: {
+      messages: {
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: THREAD_LIMIT,
+        select: { id: true, senderRole: true, body: true, createdAt: true },
+      },
+    },
+  });
+  if (!complaint) throw new TRPCError({ code: "NOT_FOUND", message: "Complaint not found" });
+  return { ...complaint, messages: [...complaint.messages].reverse() };
+}
+
+// The in-app SMS toggle on the tenant profile is the authoritative opt-out (CLAUDE.md § Africa-
+// First); sendSms checks User.smsOptIn at send time. Scoped to the tenant's own TENANT row.
+export async function setSmsOptInForTenant(tenantId: string, smsOptIn: boolean) {
+  const { count } = await prisma.user.updateMany({ where: { id: tenantId, role: "TENANT" }, data: { smsOptIn } });
+  if (count === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Profile not found" });
+  return { smsOptIn };
 }
 
 // ---- Billing (Paynow subscription + SMS bundles) — CLAUDE.md Security First:
@@ -672,6 +1121,15 @@ export async function createPendingBillingEvent(
   });
 }
 
+// A payment for the same thing started moments ago and still waiting on Paynow: the signature of
+// a double tap. Used to refuse the second one so a landlord is not charged twice.
+export async function findRecentPendingBillingEvent(orgId: string, description: string, withinMs: number) {
+  return prisma.billingEvent.findFirst({
+    where: { orgId, description, status: "PENDING", createdAt: { gt: new Date(Date.now() - withinMs) } },
+    select: { id: true },
+  });
+}
+
 export async function setBillingEventPollUrl(id: string, pollUrl: string) {
   return prisma.billingEvent.update({ where: { id }, data: { pollUrl } });
 }
@@ -680,9 +1138,12 @@ export async function getBillingEventByRef(paynowRef: string) {
   return prisma.billingEvent.findUnique({ where: { paynowRef } });
 }
 
+// Every attempt, not just the paid ones: a payment that is still confirming, failed, or was
+// cancelled has to be visible, or a landlord who paid and returned to an unchanged page pays
+// again. Callers show the status.
 export async function getBillingHistoryForOrg(orgId: string) {
   return prisma.billingEvent.findMany({
-    where: { orgId, status: "PAID" },
+    where: { orgId },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
@@ -704,14 +1165,19 @@ export async function activateOrgFromBillingEvent(
 ) {
   const meta = event.metadata as BillingMetadata | null;
   if (event.type === "SUBSCRIPTION_PAYMENT" && meta && "tier" in meta) {
-    const periodDays = meta.isAnnual ? 365 : 30;
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { tier: true, subscriptionStatus: true, isAnnual: true, currentPeriodEnd: true },
+    });
     await prisma.organization.update({
       where: { id: orgId },
       data: {
         tier: meta.tier,
         subscriptionStatus: "ACTIVE",
         isAnnual: meta.isAnnual,
-        currentPeriodEnd: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000),
+        // Renewing the same active plan early extends from the current end instead of discarding
+        // the days already paid for (lib/billing-plan.ts, shared with the billing page's copy).
+        currentPeriodEnd: nextPeriodEnd(org, meta.tier as PaidTier, meta.isAnnual, new Date()),
         pastDueSince: null,
       },
     });

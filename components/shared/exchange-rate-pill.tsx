@@ -11,6 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 type Rate = { usdToZig: number; source: string; asOf: Date; isStale: boolean } | null;
 
+// Explicit locale + zone: toLocaleDateString() with no arguments uses the device's locale,
+// which differs between server render and browser (a hydration mismatch) and prints
+// 10/9/2026 on en-US devices, against the "22 June 2026" rule in CLAUDE.md.
+function formatAsOf(date: Date) {
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Harare" });
+}
+
 export function ExchangeRatePill({
   rate,
   cardBg,
@@ -52,7 +59,7 @@ export function ExchangeRatePill({
           border: `1px solid ${amber ? "#d97706" : cardBorder}`,
           color: amber ? "#fbbf24" : fgMuted,
         }}
-        title={rate ? `As of ${rate.asOf.toLocaleDateString()} · ${rate.source}` : "Tap to set exchange rate"}
+        title={rate ? `As of ${formatAsOf(rate.asOf)} · ${rate.source}` : "Tap to set exchange rate"}
       >
         {rate ? `1 USD ≈ ${rate.usdToZig.toLocaleString()} ZiG` : "Set exchange rate"}
       </button>
@@ -65,7 +72,7 @@ export function ExchangeRatePill({
           <form onSubmit={handleSubmit} className="space-y-3">
             {rate && (
               <p className="text-sm text-muted-foreground">
-                Current: 1 USD ≈ {rate.usdToZig.toLocaleString()} ZiG (as of {rate.asOf.toLocaleDateString()},{" "}
+                Current: 1 USD ≈ {rate.usdToZig.toLocaleString()} ZiG (as of {formatAsOf(rate.asOf)},{" "}
                 {rate.source}
                 {rate.isStale ? " — stale" : ""})
               </p>

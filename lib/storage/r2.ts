@@ -15,7 +15,10 @@ export function isR2Configured() {
     process.env.R2_ACCOUNT_ID &&
       process.env.R2_ACCESS_KEY_ID &&
       process.env.R2_SECRET_ACCESS_KEY &&
-      process.env.R2_BUCKET_NAME,
+      process.env.R2_BUCKET_NAME &&
+      // Every upload's address is built from this; without it the upload would succeed and the
+      // link handed back would start with the word "undefined".
+      process.env.R2_PUBLIC_URL,
   );
 }
 

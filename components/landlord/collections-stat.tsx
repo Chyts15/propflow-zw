@@ -3,7 +3,17 @@ import { LANDLORD_DARK } from "@/components/landlord/theme";
 
 // The hero retention metric — spec: "make it prominent."
 
-export function CollectionsStat({ pct, trend }: { pct: number; trend: number | null }) {
+// pct is null when no rent has fallen due yet this month: show "—" and say so, never "0%".
+// detail is the working behind the number ("38 of 42 due paid on time").
+export function CollectionsStat({
+  pct,
+  trend,
+  detail,
+}: {
+  pct: number | null;
+  trend: number | null;
+  detail?: string;
+}) {
   const t = LANDLORD_DARK;
   return (
     <div
@@ -14,8 +24,8 @@ export function CollectionsStat({ pct, trend }: { pct: number; trend: number | n
         ON-TIME COLLECTIONS THIS MONTH
       </p>
       <div className="mt-1 flex items-baseline gap-3">
-        <p className="font-heading text-5xl font-extrabold" style={{ color: t.fg }}>
-          {pct}%
+        <p className="font-heading text-5xl font-extrabold" style={{ color: pct == null ? t.fgMuted : t.fg }}>
+          {pct == null ? "—" : `${pct}%`}
         </p>
         {trend != null && (
           <span
@@ -28,6 +38,11 @@ export function CollectionsStat({ pct, trend }: { pct: number; trend: number | n
           </span>
         )}
       </div>
+      {detail && (
+        <p className="mt-2 text-sm" style={{ color: t.fgMuted }}>
+          {detail}
+        </p>
+      )}
     </div>
   );
 }

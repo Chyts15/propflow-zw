@@ -11,16 +11,27 @@ import {
 } from "@/lib/db/scoped";
 import { TRPCError } from "@trpc/server";
 import { isR2Configured, createUploadUrl } from "@/lib/storage/r2";
+import { complaintPhotoPrefix, firstForeignPhoto } from "@/lib/storage/upload-url";
+import { landlordReplyPhotos } from "@/lib/complaint-photos";
+import { CLIENT_CUID } from "@/lib/message-id";
+import { SCOPE_QUERY } from "@/lib/complaint-queue";
 import { uploadRateLimit } from "@/lib/rate-limit";
+import type { ComplaintStatus } from "@/generated/prisma/client";
 
 const STATUSES = ["OPEN", "IN_PROGRESS", "PENDING_PARTS", "RESOLVED", "CLOSED"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 const CONTENT_TYPES = ["image/jpeg", "image/png", "application/pdf"] as const;
 
 export const complaintsRouter = router({
+  // The landlord's queue, one feed at a time: ACTIVE (open, in progress, pending parts; most
+  // urgent first) or RESOLVED (resolved and closed; most recently touched first). Resolved
+  // complaints never share a page with active ones, so they cannot push an open one off page one.
   list: landlordProcedure
-    .input(z.object({ cursor: z.string().cuid().optional() }).optional())
-    .query(({ ctx, input }) => getComplaintsForOrg(ctx.orgId, { cursor: input?.cursor })),
+    .input(z.object({ scope: z.enum(["ACTIVE", "RESOLVED"]), cursor: z.string().cuid().optional() }))
+    .query(({ ctx, input }) => {
+      const { statuses, order } = SCOPE_QUERY[input.scope];
+      return getComplaintsForOrg(ctx.orgId, { cursor: input.cursor, statuses: statuses as readonly ComplaintStatus[], order });
+    }),
 
   byId: landlordProcedure
     .input(z.object({ complaintId: z.string().cuid() }))
@@ -35,9 +46,19 @@ export const complaintsRouter = router({
     .mutation(({ ctx, input }) => updateComplaintPriority(ctx.orgId, input.complaintId, input.priority)),
 
   reply: landlordWriteProcedure
-    .input(z.object({ complaintId: z.string().cuid(), body: z.string().min(1).max(2000), imageUrls: z.array(z.string()).max(3).default([]) }))
+    // Trimmed first, so a reply of only spaces or line breaks is refused instead of saved.
+    // messageId is chosen by the screen once per reply and sent again on a retry, so a reply whose
+    // response was lost is saved once (see addComplaintMessageForOrg).
+    .input(
+      z.object({
+        complaintId: z.string().cuid(),
+        messageId: z.string().uuid(),
+        body: z.string().trim().min(1).max(2000),
+        imageUrls: landlordReplyPhotos,
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls),
+      addComplaintMessageForOrg(ctx.orgId, input.complaintId, ctx.dbUser.id, "LANDLORD", input.body, input.imageUrls, input.messageId),
     ),
 
   // Tenant reads of their own complaints — never gated by org billing status.
@@ -50,13 +71,26 @@ export const complaintsRouter = router({
   create: tenantProcedure
     .input(
       z.object({
+        // Chosen by the form once per complaint and sent again on a retry (see createComplaintForTenant).
+        complaintId: z.string().regex(CLIENT_CUID),
         title: z.string().min(1).max(200),
         description: z.string().min(1).max(2000),
         category: z.enum(["Plumbing", "Electrical", "Water/Borehole", "Security", "Structure", "Other"]),
-        imageUrls: z.array(z.string()).max(3).default([]),
+        imageUrls: z.array(z.string().url().max(2048)).max(3).default([]),
       }),
     )
-    .mutation(({ ctx, input }) => createComplaintForTenant(ctx.dbUser.id, ctx.tenancy.unitId, input)),
+    .mutation(({ ctx, input }) => {
+      // Only photos this tenant uploaded through getUploadUrl below can be attached: any other
+      // address would be loaded by the landlord's screen.
+      if (firstForeignPhoto(input.imageUrls, process.env.R2_PUBLIC_URL, complaintPhotoPrefix(ctx.dbUser.id))) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "One of the photos wasn't uploaded through PropFlow. Please add it again.",
+        });
+      }
+      const { complaintId, ...fields } = input;
+      return createComplaintForTenant(ctx.dbUser.id, ctx.tenancy.unitId, { id: complaintId, ...fields });
+    }),
 
   // Spec: Security §5 — presigned URLs only, scoped per user, validated
   // server-side before issuing. Used by the tenant complaint form's photo
@@ -75,7 +109,7 @@ export const complaintsRouter = router({
       const { success } = await uploadRateLimit(ctx.dbUser.id);
       if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many uploads — try again later" });
       const ext = input.contentType === "application/pdf" ? "pdf" : input.contentType.split("/")[1];
-      const key = `complaints/${ctx.dbUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const key = `${complaintPhotoPrefix(ctx.dbUser.id)}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       return createUploadUrl({ key, contentType: input.contentType, contentLength: input.contentLength });
     }),
 });
